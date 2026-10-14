@@ -179,10 +179,10 @@ sequenceDiagram
 
     loop every heartbeatIntervalSeconds
         App->>API: POST /v1/playback/sessions/id/heartbeat
-        API->>DB: Re-run checks 1, 4 and 5
+        API->>DB: Re-run checks 1, 2, 4 and 5
         alt still allowed
             API-->>App: 200 with extended expiresAt
-        else account inactive, entitlement lapsed or device revoked
+        else account inactive, content unpublished or out of region, entitlement lapsed, or device revoked
             API->>DB: Revoke playback session
             API-->>App: 403 with the failing error code
             App->>Player: Stop playback

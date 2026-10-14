@@ -184,6 +184,10 @@ otherwise `DEFAULT_COUNTRY_CODE` (default `IN`). Clients cannot choose their cou
 `provider: "fake"` any string the fake verifier accepts (see below). The server verifies it with the
 provider; the client never asserts its own status.
 
+`hasAccess` is `true` only while `accessUntil` is in the future **and** the status is `active`,
+`grace_period` or `cancelled` (auto-renew turned off but the paid period has not ended). It is always
+`false` for `none`, `pending`, `billing_retry`, `expired`, `refunded` and `revoked`.
+
 ### Devices
 
 | Method | Path | Auth | Body | Response |
@@ -212,8 +216,8 @@ Checks for a new session, in order (first failure wins):
 6. Active sessions (not ended/revoked, heartbeat within the stale window) < `MAX_CONCURRENT_STREAMS`
    (default 2) → else `403 CONCURRENT_STREAM_LIMIT`.
 
-A heartbeat re-runs checks 1, 4 and 5. If any fails, the session is revoked and the heartbeat returns
-that error code. A heartbeat on an ended or revoked session returns `403 PLAYBACK_SESSION_ENDED`.
+A heartbeat re-runs checks 1, 2, 4 and 5, so unpublishing content or removing a region also ends
+active sessions. If any fails, the session is revoked and the heartbeat returns that error code. A heartbeat on an ended or revoked session returns `403 PLAYBACK_SESSION_ENDED`.
 Clients send heartbeats every `heartbeatIntervalSeconds` and stop the player on any 403.
 
 ### Webhooks (server-to-server)
@@ -299,5 +303,9 @@ mode when `NODE_ENV=production`.
 - **Admin web** (`apps/admin-web`, port `3001`): `API_BASE_URL` (default `http://localhost:3000`),
   `SESSION_COOKIE_SECRET`. Tokens live only in httpOnly cookies set by Next route handlers.
 - **Mobile** (`apps/mobile`): `--dart-define=API_BASE_URL=...` (Android emulator:
-  `http://10.0.2.2:3000`, iOS simulator: `http://localhost:3000`). Tokens and `installationId` live in
+  `http://10.0.2.2:3000`, iOS simulator: `http://localhost:3000`), `FAKE_BILLING=true` to show the
+  development "simulate purchase" button, `REQUIRE_DRM=true` to refuse playback authorizations without
+  DRM (use in release builds once the DRM provider is live). Tokens and `installationId` live in
   platform secure storage.
+- On an Android emulator, fake media URLs built from `PUBLIC_API_BASE_URL=http://localhost:3000` are
+  unreachable; set `PUBLIC_API_BASE_URL` to the host's LAN IP when testing playback there.
