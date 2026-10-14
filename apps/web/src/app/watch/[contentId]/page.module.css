@@ -1,0 +1,33 @@
+.page {
+  padding-top: 20px;
+  padding-bottom: 56px;
+  max-width: 1120px;
+}
+
+.details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.details > div {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+
+.title {
+  font-size: clamp(1.4rem, 3.5vw, 2rem);
+}
