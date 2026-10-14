@@ -1,0 +1,66 @@
+.header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.headerInner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.brand {
+  font-weight: 700;
+  color: var(--color-text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.brand span {
+  color: var(--color-primary);
+}
+
+.nav {
+  display: flex;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.navLink {
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius);
+  color: var(--color-muted);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.navLink:hover {
+  background: #eef0f4;
+  color: var(--color-text);
+}
+
+.navLinkActive {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.account form {
+  margin: 0;
+}
+
+.main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.75rem 1.25rem 3rem;
+}
