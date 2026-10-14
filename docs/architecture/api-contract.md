@@ -27,6 +27,9 @@ Every error response has this shape:
 ```
 
 `code` is stable and is what clients branch on; `message` is for humans and may change.
+`400 VALIDATION_FAILED` responses also carry `errors: { field: string; message: string }[]`, where
+`field` is the request field's path (for example `"title"` or `"regions.0"`), so forms can show
+errors next to the right input.
 
 | HTTP | `code` | When |
 |---|---|---|
@@ -127,7 +130,10 @@ interface PlaybackAuthorization {
     system: DrmSystem;
     licenseUrl: string;
     certificateUrl: string | null;    // FairPlay application certificate
-    token: string;                    // short-lived license token
+    // Headers the player must send on every license request, exactly as given. They carry the
+    // short-lived license token; the header names depend on the DRM vendor, so clients never
+    // hardcode them. Treat the values as secrets: never log them.
+    licenseRequestHeaders: Record<string, string>;
   };
 }
 
@@ -156,7 +162,7 @@ interface AdminContent extends ContentSummary {
 | POST | `/v1/auth/register` | none | `{ email, password, displayName? }` (password ≥ 10 chars) | `201 { user: User, tokens: Tokens }` |
 | POST | `/v1/auth/login` | none | `{ email, password }` | `200 { user, tokens }` |
 | POST | `/v1/auth/refresh` | none | `{ refreshToken }` | `200 { tokens }` — rotates the refresh token |
-| POST | `/v1/auth/logout` | none | `{ refreshToken }` | `204` — revokes that session |
+| POST | `/v1/auth/logout` | none | `{ refreshToken }` | `204` — revokes that session; also `204` for an unknown or already-revoked token |
 | GET | `/v1/me` | bearer | — | `User` |
 | DELETE | `/v1/me` | bearer | — | `204` — soft-deletes the account, revokes sessions, devices and playback |
 
@@ -224,8 +230,8 @@ policy).
 | Method | Path | Auth | Body | Response |
 |---|---|---|---|---|
 | GET | `/v1/me/devices` | bearer | — | `Device[]` (active only) |
-| POST | `/v1/me/devices` | bearer | `{ installationId, platform, name }` | `201 Device` new, `200 Device` if this user already registered that `installationId`; `403 DEVICE_REVOKED` if it was revoked; `409 DEVICE_LIMIT_REACHED` |
-| DELETE | `/v1/me/devices/:id` | bearer | — | `204` — revokes the device and ends its playback sessions |
+| POST | `/v1/me/devices` | bearer | `{ installationId, platform, name }` | `201 Device` new, `200 Device` if this user already registered that `installationId` (re-activating it if the user had removed it); `403 DEVICE_REVOKED` if an admin blocked it; `409 DEVICE_LIMIT_REACHED` |
+| DELETE | `/v1/me/devices/:id` | bearer | — | `204` — removes the device and ends its playback sessions. The device can register again after its owner signs in on it, subject to the device limit. |
 
 `installationId` is a UUID the app generates once and keeps in secure storage. The web app generates
 one per browser and keeps it in a long-lived httpOnly cookie; each browser counts as one device
@@ -253,6 +259,10 @@ Checks for a new session, in order (first failure wins):
 5. Device belongs to the user and is not revoked → else `403 DEVICE_NOT_REGISTERED` / `DEVICE_REVOKED`.
 6. Active sessions (not ended/revoked, heartbeat within the stale window) < `MAX_CONCURRENT_STREAMS`
    (default 2) → else `403 CONCURRENT_STREAM_LIMIT`.
+
+A heartbeat that arrives after the session went stale (no heartbeat within 3× the interval, for
+example while the app was in the background) returns `403 PLAYBACK_SESSION_ENDED`; the client creates
+a new session, which re-applies the concurrent-stream limit.
 
 A heartbeat re-runs checks 1, 2, 4 and 5, so unpublishing content or removing a region also ends
 active sessions. If any fails, the session is revoked and the heartbeat returns that error code. A heartbeat on an ended or revoked session returns `403 PLAYBACK_SESSION_ENDED`.
@@ -287,20 +297,32 @@ apply state changes inside one database transaction.
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| GET | `/v1/admin/content` | query `kind?`, `status?`, `parentId?`, `page?`, `pageSize?` | `Paginated<AdminContent>` |
-| POST | `/v1/admin/content` | `{ kind, title, description, accessTier, defaultLanguage, ageRating?, parentId?, position?, regions }` | `201 AdminContent` (status `draft`) |
+| GET | `/v1/admin/content` | query `kind?`, `status?`, `parentId?`, `page?`, `pageSize?` | `Paginated<AdminContent>` — without `parentId`: top-level items only (courses and standalone videos), newest `updatedAt` first; with `parentId`: that item's children by `position` |
+| POST | `/v1/admin/content` | `{ kind, title, description, accessTier, defaultLanguage, ageRating?, thumbnailUrl?, parentId?, position?, regions }` | `201 AdminContent` (status `draft`) |
 | GET | `/v1/admin/content/:id` | — | `AdminContent & { children: AdminContent[] }` |
-| PATCH | `/v1/admin/content/:id` | any subset of the create fields | `AdminContent` |
-| POST | `/v1/admin/content/:id/upload-session` | — | `201 { videoAssetId, uploadUrl, method: "PUT", headers: Record<string,string>, expiresAt }` |
+| PATCH | `/v1/admin/content/:id` | any subset of `{ title, description, accessTier, defaultLanguage, ageRating, thumbnailUrl, position, regions }`; `null` clears `ageRating` / `thumbnailUrl` | `AdminContent`. `kind` and `parentId` cannot change (sending them → `400 VALIDATION_FAILED`). |
+| POST | `/v1/admin/content/:id/upload-session` | — | `201 { videoAssetId, uploadUrl, method: "PUT", headers: Record<string,string>, expiresAt }`; `400 VALIDATION_FAILED` for a course (courses have no video) |
 | POST | `/v1/admin/content/:id/publish` | — | `AdminContent`; `409 ASSET_NOT_READY` for a lesson/video without a ready asset (courses publish without one) |
 | POST | `/v1/admin/content/:id/unpublish` | — | `AdminContent` |
-| GET | `/v1/admin/users` | query `email` (substring), `page?` | `Paginated<{ user: User, subscription: SubscriptionView }>` |
+| GET | `/v1/admin/users` | query `email?` (case-insensitive substring; omitted lists everyone, newest first), `page?`, `pageSize?` | `Paginated<{ user: User, subscription: SubscriptionView }>` |
 | GET | `/v1/admin/users/:id` | — | `{ user, subscription: SubscriptionView, devices: Device[] (incl. revoked), activePlaybackSessions: { id, contentId, contentTitle, deviceId, startedAt, lastHeartbeatAt }[] }` |
-| POST | `/v1/admin/users/:id/sessions/revoke` | — | `204` — revokes all login sessions |
-| POST | `/v1/admin/devices/:id/revoke` | — | `204` |
+| POST | `/v1/admin/users/:id/sessions/revoke` | — | `204` — revokes all login sessions; their access tokens stop working immediately |
+| POST | `/v1/admin/devices/:id/revoke` | — | `204` — blocks the device permanently; registering it again returns `403 DEVICE_REVOKED` |
 | POST | `/v1/admin/playback-sessions/:id/revoke` | — | `204` |
 
 Every admin write is recorded in `audit_logs` (actor, action, target, timestamp).
+
+Content rules:
+- `position` is a 0-based integer among siblings. When omitted on create, the item goes last. PATCH
+  can change it; siblings are not renumbered, and ties sort by `createdAt`.
+- A lesson is visible to viewers (catalog, content detail, playback) only while both the lesson and
+  its course are published. A lesson can be published while its course is still a draft, so a course
+  can be prepared and released in one step.
+- Each lesson or video has one video asset. Uploading again replaces it: the new asset starts in
+  `processing`, and playback returns `403 CONTENT_NOT_PLAYABLE` until it is `ready`. Unpublish first if
+  that gap is not acceptable.
+- The upload `headers` must be sent exactly as returned (they may be empty). A successful upload `PUT`
+  returns `204`.
 
 ## Fake providers (development and tests only)
 
@@ -365,5 +387,6 @@ mode when `NODE_ENV=production`.
   development "simulate purchase" button, `REQUIRE_DRM=true` to refuse playback authorizations without
   DRM (use in release builds once the DRM provider is live). Tokens and `installationId` live in
   platform secure storage.
-- On an Android emulator, fake media URLs built from `PUBLIC_API_BASE_URL=http://localhost:3000` are
-  unreachable; set `PUBLIC_API_BASE_URL` to the host's LAN IP when testing playback there.
+- On an Android emulator or a USB-connected phone, run `adb reverse tcp:3000 tcp:3000` and use
+  `API_BASE_URL=http://localhost:3000`; fake media URLs built from the default `PUBLIC_API_BASE_URL`
+  then work too. Without `adb reverse`, set both to the host's LAN IP.
