@@ -42,6 +42,7 @@ flowchart LR
         app["Flutter app and device storage"]
         player["Native player"]
         browser["Admin browser"]
+        webviewer["Viewer browser and web player"]
     end
 
     subgraph edge["Edge"]
@@ -50,13 +51,14 @@ flowchart LR
 
     subgraph trusted["Trusted server side"]
         adminweb["Admin web server: Next.js route handlers"]
+        viewerweb["Viewer web server: Next.js route handlers"]
         api["NestJS API"]
         db[("PostgreSQL")]
         secrets["Secret manager"]
     end
 
     subgraph third["Third parties: verify everything"]
-        stores["Apple and Google"]
+        stores["Apple, Google and Razorpay"]
         drm["DRM license service"]
         s3["Private S3 and MediaConvert"]
     end
@@ -64,6 +66,9 @@ flowchart LR
     app -->|"B1 bearer token, validated input"| api
     browser -->|"B2 httpOnly session cookie"| adminweb
     adminweb -->|"B2 bearer token, server to server"| api
+    webviewer -->|"B9 httpOnly session cookie"| viewerweb
+    viewerweb -->|"B9 bearer token, server to server"| api
+    webviewer -->|"B5 signed URLs, license token"| cdn
     stores -->|"B3 signed notifications"| api
     api -->|"B4 outbound verification"| stores
     player -->|"B5 signed URLs"| cdn
@@ -78,11 +83,12 @@ flowchart LR
 |---|---|---|
 | B1 | Mobile app → API | Everything from the app is untrusted input. Bearer access tokens, strict validation (unknown fields → `400 VALIDATION_FAILED`), rate limits. The app never sends entitlement, price, role or country. |
 | B2 | Admin browser → admin web server → API | API tokens live only in httpOnly, Secure, SameSite cookies set by Next.js route handlers; the browser never sees them. The API enforces `role: "admin"` on every `/v1/admin/*` call. |
-| B3 | Billing providers → webhooks | Authenticity is verified before anything else (Apple signed JWS payloads, Google Pub/Sub push authentication, HMAC for the fake provider). |
+| B3 | Billing providers → webhooks | Authenticity is verified before anything else (Apple signed JWS payloads, Google Pub/Sub push authentication, Razorpay `X-Razorpay-Signature` HMAC, HMAC for the fake provider). |
 | B4 | API → billing providers | Purchase proofs from the app are verified with the provider over TLS using server-held credentials. |
 | B5 | Player → CDN and DRM | Only short-lived signed manifest/segment access and short-lived license tokens issued by the API for one playback session. |
 | B6 | CDN ↔ origin and API | The S3 origin is reachable only through CloudFront. The viewer-country header is trusted only when `TRUSTED_COUNTRY_HEADER` is set **and** the API is reachable only through the CDN, which overwrites that header. |
 | B7 | API → database | Private network, TLS, least-privilege runtime account separate from the migration account. |
+| B9 | Viewer browser → viewer web server → API | Same model as B2: API tokens stay in encrypted httpOnly cookies; the per-browser `installationId` is an httpOnly cookie; the browser talks directly only to the CDN, the DRM license service and Razorpay Checkout. A Content-Security-Policy limits scripts to the site and Razorpay. |
 | B8 | Development → production | Fake media and billing providers and `/v1/dev/*` routes cannot run with `NODE_ENV=production`; the API refuses to start. |
 
 ## 4. Attacks and defenses
@@ -101,6 +107,8 @@ flowchart LR
 | Use someone else's device id | The device must belong to the caller and not be revoked (`DEVICE_NOT_REGISTERED`, `DEVICE_REVOKED`). | Devices and playback modules |
 | Steal a refresh token | Refresh tokens rotate on every use and are stored hashed; presenting a rotated token revokes the whole session family (`401 INVALID_REFRESH_TOKEN`); access tokens live 15 minutes. | Auth module |
 | Credential stuffing or brute force | Rate limiting (`429 RATE_LIMITED`), minimum password length of 10, a generic `INVALID_CREDENTIALS` error. | Auth module |
+| Record or rip video in a browser | Browsers cannot block screen capture and desktop Widevine is usually software-only, so web video is capped at 720p by default (enforced in packaging and license policy), a moving watermark shows the viewer's email, and each browser counts against the device and stream limits. | Viewer web, media provider |
+| Forge a Razorpay payment confirmation | `/v1/checkout/razorpay/verify` checks the HMAC signature with the server-held key secret, confirms the subscription belongs to the caller, and re-reads its state from Razorpay; webhooks are HMAC-verified and deduplicated. | Billing and webhooks modules |
 | Steal admin tokens through XSS | Tokens only in httpOnly cookies on the admin domain; the admin web server talks to the API server-to-server; `CORS_ORIGINS` limited to the admin origin. | Admin web, API |
 | Escalate a viewer to admin | Role is server-side only (never accepted on register or profile updates); `/v1/admin/*` returns `403 FORBIDDEN` to non-admins; every admin write is audited. | API admin module, audit module |
 | Spoof the viewer's country | Country comes only from the CDN-set header or `DEFAULT_COUNTRY_CODE`; the API origin accepts traffic only via the CDN. | API, CDN configuration |
@@ -180,7 +188,7 @@ These remain after every control above and are accepted, monitored or scheduled:
 | Admin multi-factor authentication | Not in the v1 contract | Production |
 | Email verification and password reset | Not in the v1 contract | Launch |
 | `drm_license_audit` population | Depends on the DRM vendor's callbacks or logs | With real DRM |
-| Web checkout (Razorpay) | Out of scope for v1 | Later, if store rules allow |
+| FairPlay in Safari (including iPhone and iPad browsers) | Needs Apple FairPlay credentials | Soon after launch |
 
 ## 8. Secret handling and rotation
 
@@ -188,7 +196,7 @@ Rules:
 
 - Secrets live only in the cloud secret manager (production and staging) or in a local, git-ignored
   `services/api/.env` (development). Only `.env.example` with placeholders is committed.
-- Nothing secret ships in the mobile app or the admin browser bundle. The app's only configuration is
+- Nothing secret ships in the mobile app or in either website's browser bundle. The app's only configuration is
   the API base URL.
 - Separate secrets per environment; never reuse development values in staging or production.
 - Least-privilege access: the API's runtime identity can read only the secrets it needs.
@@ -200,7 +208,7 @@ Rules:
 |---|---|---|
 | `JWT_ACCESS_SECRET` | API | Rotating invalidates access tokens within `ACCESS_TOKEN_TTL_SECONDS`; clients refresh. Supporting two active keys during rotation avoids forced re-login. |
 | Refresh tokens | API | Stored only as hashes; revoked by logout, reuse detection, account deletion or admin action. |
-| `SESSION_COOKIE_SECRET` | Admin web | Rotating signs all admins out. |
+| `SESSION_COOKIE_SECRET` | Admin web, viewer web (separate values) | Rotating signs everyone on that site out. |
 | Database credentials | API, migrations | Separate runtime and migration accounts; rotate through the secret manager. |
 | CloudFront signing private key | API (media provider) | CloudFront key groups allow a new public key to be added before the old one is removed. |
 | DRM vendor credentials and key material | API (media provider) | Per the vendor's rotation process; content keys managed by the vendor. |
@@ -208,7 +216,7 @@ Rules:
 | Google Play service account key and Pub/Sub push audience | API (billing, webhooks) | Prefer short-lived credentials where possible; otherwise rotate the key file. |
 | `FAKE_MEDIA_SIGNING_SECRET`, `FAKE_WEBHOOK_SECRET` | API, development only | Never present in production. |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Seed script only | Development and staging only; change the password after first login. |
-| Razorpay key secret and webhook secret | API (later) | Added with web checkout. |
+| Razorpay key secret and webhook secret | API (billing, webhooks) | Generate new keys in the Razorpay dashboard, deploy, then delete the old ones. |
 
 ## 9. Incident response outline
 

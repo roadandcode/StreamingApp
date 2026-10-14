@@ -111,7 +111,24 @@ admin account. The API's default `CORS_ORIGINS` already allows `http://localhost
 kept in httpOnly cookies by the dashboard's own route handlers, so you will not see them in browser
 storage.
 
-## 7. Run the mobile app
+## 7. Run the viewer website
+
+```bash
+export API_BASE_URL=http://localhost:3000
+export SESSION_COOKIE_SECRET="$(openssl rand -hex 32)"   # use a different value from the admin
+export NEXT_PUBLIC_FAKE_BILLING=true                       # shows "Simulate purchase (dev)"
+pnpm --filter @streamingapp/web dev          # http://localhost:3002
+```
+
+You can also put these in `apps/web/.env.local` (git-ignored). The API's default `CORS_ORIGINS`
+includes `http://localhost:3002`, which the web player needs because it fetches media URLs directly.
+Real web payments need `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` and the
+Razorpay plan ids in the API's `.env` (use Razorpay test-mode keys locally); without them the
+subscribe page reports that payments are not configured. Headless browsers and some Linux browsers
+have no Widevine, which does not matter in development because the fake media provider serves
+unprotected video.
+
+## 8. Run the mobile app
 
 ```bash
 cd apps/mobile
@@ -131,7 +148,7 @@ flutter run --dart-define=API_BASE_URL=http://localhost:3000 --dart-define=FAKE_
 - On a physical phone, use your computer's LAN address (for example `http://192.168.1.20:3000`)
   instead.
 
-## 8. The fake providers
+## 9. The fake providers
 
 The fakes exist so the whole flow can be exercised without any external account. The API refuses to
 start with either fake when `NODE_ENV=production`, and `/v1/dev/*` and `/v1/webhooks/fake` are never
