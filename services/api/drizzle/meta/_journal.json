@@ -15,6 +15,13 @@
       "when": 1791971676010,
       "tag": "0001_razorpay_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791972435624,
+      "tag": "0002_device_revoked_by",
+      "breakpoints": true
     }
   ]
 }

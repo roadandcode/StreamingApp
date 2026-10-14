@@ -100,6 +100,11 @@ export const devices = pgTable(
     name: text('name').notNull(),
     lastSeenAt: ts('last_seen_at').notNull().defaultNow(),
     revokedAt: ts('revoked_at'),
+    /**
+     * Who revoked the device: `user` (removed by its owner; re-registering re-activates it),
+     * `admin` (blocked permanently) or `account_deletion`.
+     */
+    revokedBy: text('revoked_by').$type<DeviceRevokedBy>(),
     riskStatus: text('risk_status').notNull().default('normal'),
     createdAt: createdAt(),
   },
@@ -351,6 +356,8 @@ export const auditLogs = pgTable(
     index('audit_logs_created_at_idx').on(t.createdAt),
   ],
 );
+
+export type DeviceRevokedBy = 'user' | 'admin' | 'account_deletion';
 
 export type UserRow = typeof users.$inferSelect;
 export type UserSessionRow = typeof userSessions.$inferSelect;

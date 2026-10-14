@@ -115,7 +115,7 @@ export class AdminUsersService {
     await this.db.transaction(async (tx) => {
       const [device] = await tx.select().from(devices).where(eq(devices.id, deviceId)).for('update').limit(1);
       if (!device) throw new AppException('NOT_FOUND');
-      await this.devices.revokeDevice(tx, device, new Date());
+      await this.devices.revokeDevice(tx, device, 'admin', new Date());
       await this.audit.record(tx, {
         actorUserId: actorId,
         action: 'device.revoke',

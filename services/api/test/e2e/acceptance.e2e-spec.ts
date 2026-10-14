@@ -452,21 +452,42 @@ describe('acceptance path (e2e)', () => {
     await http(ctx.app).get('/v1/me').set(bearer(viewer.accessToken)).expect(200);
   });
 
-  it("revoking a device ends that device's playback", async () => {
+  it("removing a device ends that device's playback; the owner can register it again", async () => {
     const session = await startPlayback(SEED_IDS.freeLesson1).expect(201);
     const sessionId = (session.body as PlaybackAuthorizationBody).playbackSessionId;
     await http(ctx.app).delete(`/v1/me/devices/${deviceId}`).set(bearer(viewer.accessToken)).expect(204);
 
     expect((await heartbeat(sessionId).expect(403)).body.code).toBe('PLAYBACK_SESSION_ENDED');
     expect((await startPlayback(SEED_IDS.freeLesson1).expect(403)).body.code).toBe('DEVICE_REVOKED');
+    const list = await http(ctx.app).get('/v1/me/devices').set(bearer(viewer.accessToken)).expect(200);
+    expect(list.body).toEqual([]);
+
+    const reRegister = await http(ctx.app)
+      .post('/v1/me/devices')
+      .set(bearer(viewer.accessToken))
+      .send({ installationId, platform: 'android', name: 'Again' })
+      .expect(200);
+    expect(reRegister.body).toMatchObject({ id: deviceId, name: 'Again', revokedAt: null });
+    const resumed = await startPlayback(SEED_IDS.freeLesson1).expect(201);
+    await http(ctx.app)
+      .delete(`/v1/playback/sessions/${(resumed.body as PlaybackAuthorizationBody).playbackSessionId}`)
+      .set(bearer(viewer.accessToken))
+      .expect(204);
+  });
+
+  it('an admin block is permanent: playback ends and re-registering gets 403 DEVICE_REVOKED', async () => {
+    const session = await startPlayback(SEED_IDS.freeLesson1).expect(201);
+    const sessionId = (session.body as PlaybackAuthorizationBody).playbackSessionId;
+    const admin = await loginAdmin(ctx.app);
+    await http(ctx.app).post(`/v1/admin/devices/${deviceId}/revoke`).set(bearer(admin.accessToken)).expect(204);
+
+    expect((await heartbeat(sessionId).expect(403)).body.code).toBe('PLAYBACK_SESSION_ENDED');
     const reRegister = await http(ctx.app)
       .post('/v1/me/devices')
       .set(bearer(viewer.accessToken))
       .send({ installationId, platform: 'android', name: 'Again' })
       .expect(403);
     expect(reRegister.body.code).toBe('DEVICE_REVOKED');
-    const list = await http(ctx.app).get('/v1/me/devices').set(bearer(viewer.accessToken)).expect(200);
-    expect(list.body).toEqual([]);
   });
 
   it('DELETE /v1/me soft-deletes the account and blocks further login', async () => {

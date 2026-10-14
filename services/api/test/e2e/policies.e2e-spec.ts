@@ -31,7 +31,7 @@ describe('devices, regions, subscription states and errors (e2e)', () => {
   describe('devices', () => {
     it('allows MAX_DEVICES active devices and refuses one more with 409', async () => {
       const user = await registerUser(ctx.app);
-      const ids = [];
+      const ids: string[] = [];
       for (let i = 0; i < 3; i += 1) ids.push(await registerDevice(ctx.app, user));
       const fourth = await http(ctx.app)
         .post('/v1/me/devices')
@@ -40,11 +40,23 @@ describe('devices, regions, subscription states and errors (e2e)', () => {
         .expect(409);
       expect(fourth.body).toEqual({ statusCode: 409, code: 'DEVICE_LIMIT_REACHED', message: expect.any(String) });
 
-      // Revoking one frees a slot.
+      // Removing one frees a slot.
+      const removed = await http(ctx.app).get('/v1/me/devices').set(bearer(user.accessToken)).expect(200);
+      const removedInstallation = (removed.body as Array<{ id: string; installationId: string }>).find(
+        (d) => d.id === ids[0],
+      )?.installationId;
       await http(ctx.app).delete(`/v1/me/devices/${ids[0]}`).set(bearer(user.accessToken)).expect(204);
       await registerDevice(ctx.app, user);
       const list = await http(ctx.app).get('/v1/me/devices').set(bearer(user.accessToken)).expect(200);
       expect(list.body).toHaveLength(3);
+
+      // Re-activating the removed device is subject to the limit too.
+      const reactivate = await http(ctx.app)
+        .post('/v1/me/devices')
+        .set(bearer(user.accessToken))
+        .send({ installationId: removedInstallation, platform: 'android', name: 'Back again' })
+        .expect(409);
+      expect(reactivate.body.code).toBe('DEVICE_LIMIT_REACHED');
     });
 
     it("refuses another user's device id: 403 DEVICE_NOT_REGISTERED", async () => {

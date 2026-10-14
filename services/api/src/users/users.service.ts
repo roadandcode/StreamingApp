@@ -37,7 +37,7 @@ export class UsersService {
       await revokeAllUserSessions(tx, userId, now);
       await tx
         .update(devices)
-        .set({ revokedAt: now })
+        .set({ revokedAt: now, revokedBy: 'account_deletion' })
         .where(and(eq(devices.userId, userId), isNull(devices.revokedAt)));
       await revokePlaybackSessions(tx, { userId }, 'ACCOUNT_DELETED', now);
       await this.audit.record(tx, {

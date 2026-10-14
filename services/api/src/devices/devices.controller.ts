@@ -31,7 +31,9 @@ export class DevicesController {
   @Post()
   @ApiOperation({
     summary: 'Register this installation as a device',
-    description: '`201` for a new device, `200` when this installation was already registered.',
+    description:
+      '`201` for a new device, `200` when this installation was already registered (re-activating it if ' +
+      'the user had removed it). `403 DEVICE_REVOKED` if an admin blocked it.',
   })
   @ApiCreatedResponse({ type: DeviceDto, description: 'New device' })
   @ApiOkResponse({ type: DeviceDto, description: 'Installation already registered' })
@@ -48,8 +50,11 @@ export class DevicesController {
 
   @Delete(':id')
   @HttpCode(204)
-  @ApiOperation({ summary: 'Revoke a device and end its playback sessions' })
-  @ApiNoContentResponse({ description: 'Device revoked.' })
+  @ApiOperation({
+    summary: 'Remove a device and end its playback sessions',
+    description: 'The device can be registered again later, subject to the device limit.',
+  })
+  @ApiNoContentResponse({ description: 'Device removed.' })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
   async revoke(@CurrentUser() user: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<void> {
     await this.devices.revokeOwn(user.id, id);

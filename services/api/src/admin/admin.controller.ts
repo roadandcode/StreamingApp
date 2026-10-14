@@ -129,7 +129,10 @@ export class AdminUsersController {
 
   @Post('devices/:id/revoke')
   @HttpCode(204)
-  @ApiOperation({ summary: 'Revoke a device and end its playback sessions' })
+  @ApiOperation({
+    summary: 'Block a device permanently and end its playback sessions',
+    description: 'Registering it again returns 403 DEVICE_REVOKED.',
+  })
   @ApiNoContentResponse({ description: 'Device revoked.' })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
   async revokeDevice(@CurrentUser() actor: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<void> {
