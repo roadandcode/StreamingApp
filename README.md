@@ -1,7 +1,7 @@
 # StreamingApp
 
-An India-first subscription video-streaming platform for Android and iOS: subscribers watch original
-videos and courses, and playback is authorized only by the backend.
+An India-first subscription video-streaming platform, launching on Android first, with web and iOS to
+follow. Subscribers watch original videos and courses, and playback is authorized only by the backend.
 
 ## Repository layout
 
@@ -9,7 +9,7 @@ videos and courses, and playback is authorized only by the backend.
 |---|---|
 | `services/api` | NestJS + PostgreSQL backend: auth, catalog, subscriptions, entitlements, playback authorization, devices, webhooks, admin APIs |
 | `apps/admin-web` | Next.js admin dashboard: content, uploads, publishing, user support |
-| `apps/mobile` | Flutter app for Android and iOS |
+| `apps/mobile` | Flutter app (Android at launch; iOS later from the same codebase) |
 | `packages/api-contracts` | OpenAPI spec emitted by the API, plus generated TypeScript types |
 | `docs/` | Project plan, architecture, API contract, security and operations notes |
 | `infrastructure/` | Local database setup and deployment notes |

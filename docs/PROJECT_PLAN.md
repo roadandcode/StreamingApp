@@ -1,8 +1,10 @@
 # StreamingApp: product and technical plan
 
-StreamingApp is an India-first subscription video-streaming app for Android and iOS. Subscribers pay to
-watch our own original videos and courses; premium content is playable only by paying subscribers and
-is protected with DRM (Widevine on Android, FairPlay on iOS) and server-side playback authorization.
+StreamingApp is an India-first subscription video-streaming app. It launches on **Android first**; a
+web version and then an iOS app follow if Android proves profitable. Subscribers pay to watch our own
+original videos and courses; premium content is playable only by paying subscribers and is protected
+with DRM (Widevine on Android and in browsers, FairPlay on iOS and Safari) and server-side playback
+authorization.
 
 This document is the complete plan: what we are building, how the pieces fit together, how access is
 protected, what it is likely to cost, and the order in which to build it.
@@ -34,7 +36,7 @@ protected, what it is likely to cost, and the order in which to build it.
 - [17. Itemized budget (estimates)](#17-itemized-budget-estimates)
 - [18. App-store and developer account fees](#18-app-store-and-developer-account-fees)
 - [19. Roadmap](#19-roadmap)
-- [20. The 12-week solo-developer plan](#20-the-12-week-solo-developer-plan)
+- [20. Android launch plan (week by week)](#20-android-launch-plan-week-by-week)
 - [21. Testing and deployment checklists](#21-testing-and-deployment-checklists)
 - [22. India launch checklist](#22-india-launch-checklist)
 - [23. Post-launch metrics](#23-post-launch-metrics)
@@ -47,16 +49,17 @@ protected, what it is likely to cost, and the order in which to build it.
 | Area | Decision |
 |---|---|
 | Content | Our own original videos and courses. No licensed third-party catalog and no live streaming in the first release. |
-| Protection | Strong DRM and anti-piracy: Widevine on Android, FairPlay on iOS, plus server-side entitlement checks, short-lived playback authorizations, device and concurrent-stream limits. |
+| Protection | Strong DRM and anti-piracy: Widevine on Android (and in browsers for the web version), FairPlay when iOS ships, plus server-side entitlement checks, short-lived playback authorizations, device and concurrent-stream limits. |
 | Team | Solo developer. Buy the difficult media-security components; build the business logic in-house. |
 | Budget | Not fixed yet. Compare a lean launch with a DRM-first launch (see [§15](#15-provider-decision) and [§17](#17-itemized-budget-estimates)). |
 | Market | India first (INR pricing, Indian payment methods through the stores), then worldwide through configuration rather than a rebuild. |
-| Mobile app | Flutter for Android and iOS, with native playback through Media3/ExoPlayer (Android) and AVPlayer (iOS) for DRM. |
+| Platform rollout | **Android first.** A web version follows if Android is profitable, then iOS. The Flutter codebase and the platform-neutral backend keep the later platforms cheap to add. See [§19](#platform-rollout-and-timeline). |
+| Mobile app | Flutter, shipping on Android first with native Media3/ExoPlayer playback for Widevine. The same codebase targets iOS later, with AVPlayer for FairPlay. |
 | Backend | NestJS + TypeScript as a modular monolith, PostgreSQL as the source of truth. |
 | Admin | Next.js admin dashboard (content, uploads, publishing, user support). |
 | Media pipeline | Option B, DRM-first: private S3 → AWS Elemental MediaConvert → CloudFront, plus a specialist multi-DRM vendor. The vendor is **not chosen yet**; the backend talks to it through a provider interface with a fake implementation for development. |
-| Billing | Apple StoreKit + App Store Server API and Server Notifications; Google Play Billing + Play Developer API and Real-time Developer Notifications (RTDN). Razorpay web checkout later, only where store rules allow it. |
-| First milestone | A two-platform proof of concept: a paying user plays an encrypted video on Android and iPhone, and an unauthorized user cannot obtain a new playback authorization. |
+| Billing | At launch: Google Play Billing + Play Developer API and Real-time Developer Notifications (RTDN). With the web version: Razorpay web checkout. With the iOS app: Apple StoreKit + App Store Server API and Server Notifications. |
+| First milestone | An Android proof of concept: a paying user plays a Widevine-encrypted video on a real Android phone, and an unauthorized user cannot obtain a new playback authorization. |
 
 ## Repository status
 
@@ -66,7 +69,7 @@ The repository is a monorepo:
 |---|---|
 | `services/api` | NestJS + PostgreSQL backend: auth, catalog, subscriptions, entitlements, playback authorization, devices, webhooks, admin APIs |
 | `apps/admin-web` | Next.js admin dashboard (port 3001) |
-| `apps/mobile` | Flutter app for Android and iOS |
+| `apps/mobile` | Flutter app (Android at launch; iOS later from the same codebase) |
 | `packages/api-contracts` | OpenAPI JSON emitted by the API, plus generated TypeScript types |
 | `docs/` | This plan, architecture, API contract, security and operations notes |
 | `infrastructure/` | Local database setup and deployment notes |
@@ -765,16 +768,18 @@ that supports our target devices.
 
 ## 16. DRM proof-of-concept requirements
 
-Before selecting a DRM vendor, the proof of concept must demonstrate all of the following:
+For the Android launch, the proof of concept must demonstrate the items below. Choose a vendor that
+also supports FairPlay and browser DRM, so the web and iOS phases do not force a vendor change.
 
 - [ ] Android playback with Widevine on supported devices.
-- [ ] iOS playback with FairPlay Streaming.
-- [ ] Encrypted HLS/DASH packaging appropriate to both platforms.
+- [ ] Encrypted DASH/HLS packaging for Widevine (confirm the vendor can add FairPlay and browser DRM later).
 - [ ] Server-side DRM license issuance and authorization (license token issued only by our backend).
 - [ ] Short-lived playback authorization that can be revoked or expire.
 - [ ] No publicly accessible master files or unprotected premium renditions.
 - [ ] Correct behavior after subscription expiry, refund, logout and device revocation.
-- [ ] Compatibility with our Flutter app and its native Media3/ExoPlayer and AVPlayer integrations.
+- [ ] Compatibility with our Flutter app and its native Media3/ExoPlayer integration.
+- [ ] Later phases: browser playback through EME (Widevine on Chrome, Edge and Firefox; FairPlay on
+  Safari) for the web version, and FairPlay with AVPlayer for iOS.
 
 DRM license duration and in-progress playback behavior are partly controlled by the DRM vendor and
 the client. Our entitlement checks alone cannot guarantee that an already-issued license stops working
@@ -842,8 +847,8 @@ viewing hours, stored catalog, target countries and device mix.
 
 | Item | Estimated cost |
 |---|---|
-| Apple Developer Program | US$99 per year (local pricing and enrollment requirements apply in India); see [Apple Developer Program](https://developer.apple.com/programs/) |
-| Google Play Console | US$25 one-time registration; see [Get started with Play Console](https://support.google.com/googleplay/android-developer/answer/6112435) |
+| Apple Developer Program | US$99 per year, needed only for the iOS phase (local pricing and enrollment requirements apply in India); see [Apple Developer Program](https://developer.apple.com/programs/) |
+| Google Play Console | US$25 one-time registration; see [Get started with Play Console](https://support.google.com/googleplay/android-developer/answer/6112435). New personal accounts must run a closed test (at least 12 testers for 14 days) before production; organization accounts need a D-U-N-S number instead. Confirm the current rules. |
 | DRM vendor | Vendor-specific; get a quote |
 | Domain | About ₹800–₹2,000 per year as a planning allowance |
 | Email and monitoring | Often free tiers at first |
@@ -864,84 +869,86 @@ are planning estimates, not guarantees; several phases overlap.
 | 1. Product definition and proof of concept | 1–2 | Finalize audience and content rights, define free vs premium, select the video provider and evaluate DRM, test playback on representative devices, build a simple cost model. |
 | 2. Backend foundation | 2–4 | Environments, database, authentication, APIs, catalog and admin upload workflow, entitlement model, logging, secrets, backups, monitoring. |
 | 3. Mobile application | 4–7 | Registration, login, home, search, details, playback, watch history, captions, player errors, subscription screens, account management, analytics and crash reporting. |
-| 4. Billing and content security | 6–10 | Apple and Google subscriptions, server-side verification, signed notifications, playback authorization, signed access and DRM, device and concurrent-stream limits. |
+| 4. Billing and content security | 6–10 | Google Play subscriptions (Apple with the iOS phase), server-side verification, signed notifications, playback authorization, signed access and DRM, device and concurrent-stream limits. |
 | 5. QA, security and operational readiness | 9–13 | Renewal, cancellation, expiry, refund and restore tests; poor networks, backgrounding, device changes; security testing proving unauthorized playback fails; privacy disclosures, support and store submissions. |
 | 6. India launch and controlled rollout | 13–16 | Small beta, monitor startup time, buffering, playback errors and conversion, fix critical issues, review real costs and feedback before scaling marketing. |
 
 Do not skip the proof of concept. Discovering late that the chosen video provider cannot meet the DRM
 requirements forces expensive architectural changes.
 
-### Realistic schedule for a solo developer
+### Platform rollout and timeline
 
-The 12-week plan below is a target for a controlled MVP and beta. Reaching a production-oriented
-first release alone is likely to take longer. Estimated effort by area (phases overlap, so the total is
-not the sum of the maximums):
+Launch order: **Android → web → iOS**, each later phase starting only if the previous one is
+profitable. Writing the code is not the slow part: the calendar is driven by vendor onboarding, store
+requirements and testing on real devices. All figures are estimates.
 
-| Area | Estimated duration |
+**Phase 1: Android (launch)**
+
+| Track | Estimate | Notes |
+|---|---:|---|
+| Code complete for the Android release | 2–3 weeks | Real Google Play verification and RTDN, the AWS media pipeline, the Media3 Widevine player, polish and tests. The backend, admin dashboard and app foundation already exist. |
+| DRM vendor quotes, contract and account | 1–3 weeks | Runs in parallel with the coding. |
+| Google Play Console setup | days to 2 weeks | Organization accounts need a D-U-N-S number. |
+| Closed test (new personal Play accounts) | 14+ days | At least 12 opted-in testers for 14 consecutive days before production access; confirm current rules. |
+| Widevine testing on real Android phones | about 1 week | Including low-end phones and slow networks. |
+| Play review | hours to a few days | New apps and accounts can take longer. |
+
+| Scenario | Time to a public Android launch |
 |---|---:|
-| Requirements, architecture, database, DRM proof of concept | 2 weeks |
-| Backend, authentication, PostgreSQL, catalog APIs | 2–3 weeks |
-| Admin dashboard, upload workflow, video processing | 2 weeks |
-| Flutter app: catalog, search, accounts, player UI | 3–4 weeks |
-| Android/iOS playback and multi-DRM integration | 2–4 weeks |
-| Google Play and Apple subscription billing, restore purchases | 2–3 weeks |
-| Security, automated tests, device testing, bug fixes | 2–3 weeks |
-| Deployment, privacy/legal checks, store submissions, beta fixes | 2–3 weeks |
+| Best case: accounts and vendor started in week 1, DRM works early | about 4 weeks |
+| Likely | 5–6 weeks |
+| Risk case: vendor or Widevine integration needs several rounds of fixes | about 8 weeks |
 
-| Working pattern | Estimated time to a first release |
-|---|---:|
-| Full-time (35–40 hours/week), experienced developer, focused scope | 4–6 months |
-| Part-time (15–20 hours/week) alongside another job | 7–10 months |
-| New to Flutter or backend development | 6–9+ months |
+**Phase 2: web (if Android is profitable).** A browser player using EME (Widevine on Chrome, Edge and
+Firefox; FairPlay on Safari), web sign-in, and web checkout through Razorpay, which avoids store
+commission on web sales (payment-gateway fees still apply). The backend, entitlements and admin
+dashboard are shared, so this needs no backend rework. Estimate: 3–4 weeks of build and testing.
 
-DRM integration and app-store policy issues are the most likely causes of delay.
+**Phase 3: iOS.** Apple Developer enrollment, FairPlay Streaming credentials from Apple, StoreKit
+purchases with App Store Server API verification and notifications, AVPlayer FairPlay playback, and a
+Mac with Xcode for builds. Estimate: 3–4 weeks of build and testing, plus 1–3 weeks for Apple
+approvals, which can start while the build is under way.
 
-## 20. The 12-week solo-developer plan
+DRM integration and store-policy issues remain the most likely causes of delay.
 
-A 12-week plan is a target for a controlled MVP, not a guarantee of production readiness. Allow extra
-time if the DRM vendor's player integration needs native work.
+## 20. Android launch plan (week by week)
 
-### Weeks 1–2: resolve the major risks
+A target for a controlled Android release in India, assuming the store account and vendor
+conversations start in week 1. Allow extra time if the DRM vendor's Media3 integration needs more
+native work.
 
-- Shortlist two DRM-capable vendors.
-- Confirm pricing and supported player integrations.
-- Build a sample encrypted stream on Android and iOS.
-- Test license issuance and expiry.
-- Set the target content and subscription model.
+### Week 1: remove the big risks
 
-### Weeks 3–4: backend foundation
+- Register the Google Play Console account and an AWS account.
+- Request quotes from two or three multi-DRM vendors (Widevine now; FairPlay and browser DRM later).
+- Prepare 3–5 representative sample videos and confirm the subscription model.
+- Play a Widevine-encrypted sample on a real Android phone with Media3.
 
-- Configure PostgreSQL and migrations.
-- Implement authentication, users, catalog and admin roles.
-- Create the content upload and publishing workflow.
-- Deploy a staging environment.
+### Week 2: real integrations
 
-### Weeks 5–6: mobile viewing experience
+- Google Play Billing in the app, server-side verification with the Play Developer API, and RTDN
+  webhooks.
+- AWS pipeline: private S3 uploads, MediaConvert packaging with the DRM vendor's keys, CloudFront
+  signed delivery.
+- The Media3/ExoPlayer Widevine player behind the app's player abstraction.
 
-- Home, search, content details and course structure.
-- Player integration, subtitles, progress and resume.
-- Error states, account management and basic analytics.
+### Week 3: harden and test
 
-### Weeks 7–8: billing and entitlements
+- Subscription edge cases: renewal, cancellation, grace period, expiry, refund and restore.
+- Security checks: expired and replayed credentials, forged purchases, device and stream limits,
+  revocation.
+- Privacy policy, terms, refund policy, the Play data-safety form and the content rating.
+- Staging and production environments with backups and monitoring.
 
-- Configure Apple and Google subscription products.
-- Implement purchase verification and notification handlers.
-- Add restore purchases and subscription management.
-- Test renewal, cancellation and expiry.
+### Weeks 3–5: closed test and fixes
 
-### Weeks 9–10: secure playback
+- Run the Play closed test (14 days with at least 12 testers for new personal accounts).
+- Test on low-end phones and slow networks, and fix what the testers find.
 
-- Implement authorization and short-lived playback credentials.
-- Integrate the DRM license flow.
-- Add device and concurrent-session policies.
-- Verify protected media delivery and access revocation.
+### Weeks 5–6: launch
 
-### Weeks 11–12: test and prepare the release
-
-- Test on real Android and iOS devices.
-- Verify privacy disclosures, store billing and content rights.
-- Complete backup and incident-response checks.
-- Release a limited beta and fix critical problems.
+- Production release in India, starting with a staged rollout.
+- Watch playback failures, startup time, conversion and real delivery costs before scaling marketing.
 
 If the DRM player integration turns out to be unstable, extend the timeline rather than weakening the
 security requirements to hit an arbitrary date.
@@ -1070,16 +1077,19 @@ record of everything every user does.
 ## 24. What to do in the first seven days
 
 Don't start by building every screen. Start with the highest-risk question: can we deliver
-DRM-protected video reliably on both platforms at a cost the business can afford?
+DRM-protected video reliably on Android at a cost the business can afford?
 
 - **Day 1, define the product:** decide whether the subscription unlocks the whole course library or
   individual categories (the v1 contract assumes a single premium tier), and prepare 3–5
   representative sample videos.
-- **Days 2–3, evaluate DRM vendors:** request quotes for Widevine and FairPlay; ask about minimum
+- **Day 1, also:** register the Google Play Console account (decide personal or organization) and an
+  AWS account, so the slow approvals start early.
+- **Days 2–3, evaluate DRM vendors:** request quotes for Widevine now, and confirm FairPlay and
+  browser DRM support for the later phases; ask about minimum
   commitments, per-license charges, Flutter/native player support and delivery in India. Do not commit
   before testing the player.
-- **Days 4–5, build a technical proof of concept:** play one encrypted sample video on an Android
-  device and an iPhone; test license failure, expired authorization and playback on a slow connection.
+- **Days 4–5, build a technical proof of concept:** play one encrypted sample video on a real
+  Android phone; test license failure, expired authorization and playback on a slow connection.
 - **Days 6–7, finalize the budget:** estimate monthly delivery costs at 100, 1,000 and 10,000
   subscribers (see [§14](#14-cost-model)), including DRM, storage, store fees, payment costs and taxes.
 
@@ -1088,23 +1098,25 @@ DRM-protected video reliably on both platforms at a cost the business can afford
 Do not try to build global, large-scale infrastructure immediately. Build a secure, well-designed
 streaming product on the right foundations.
 
-- **Build now:** Flutter apps, the NestJS backend, PostgreSQL, the admin dashboard, the managed video
-  pipeline, catalog management, Apple and Google subscriptions, and the normalized entitlement system.
+- **Build now:** the Flutter Android app, the NestJS backend, PostgreSQL, the admin dashboard, the
+  managed video pipeline, catalog management, Google Play subscriptions, and the normalized
+  entitlement system.
 - **Include in the initial security design:** server-side purchase verification, private video
   assets, short-lived playback authorization, secure secrets management, device limits, audit logs
   and DRM.
-- **Add as the business grows:** forensic watermarking, offline viewing, recommendations, more
+- **Add as the business grows:** a web version if Android is profitable, then the iOS app, then
+  forensic watermarking, offline viewing, recommendations, more
   regions, TV apps, more sophisticated fraud detection and customized media infrastructure where
   justified.
 
 **The stack:** Flutter + NestJS + PostgreSQL + AWS media infrastructure + a specialist multi-DRM
-vendor, subject to a successful two-platform proof of concept. Keep the backend a modular monolith,
+vendor, subject to a successful Android proof of concept. Keep the backend a modular monolith,
 use store billing for mobile subscriptions, and keep the entitlement system independent of the
 payment provider. Launch in India first, then expand through configuration-driven pricing and
 region-specific content availability.
 
 **The first milestone is not a finished app.** It is a small working demonstration that a paying user
-can watch an encrypted video on both Android and iOS, while an unauthorized user cannot obtain a new
+can watch an encrypted video on an Android phone, while an unauthorized user cannot obtain a new
 playback authorization. Once that works, the rest of the product is much more straightforward.
 
 ## Official references
