@@ -34,10 +34,11 @@ jobs:
       TEST_DATABASE_URL: postgres://streaming:streaming@localhost:5432/streaming_test
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
-      - run: corepack enable
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @streamingapp/api lint
       - run: pnpm --filter @streamingapp/api typecheck
@@ -58,16 +59,37 @@ jobs:
       SESSION_COOKIE_SECRET: ci-only-session-cookie-secret-0123456789
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
-      - run: corepack enable
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @streamingapp/admin-web lint
       - run: pnpm --filter @streamingapp/admin-web typecheck
       - run: pnpm --filter @streamingapp/admin-web build
       - run: pnpm --filter @streamingapp/admin-web exec playwright install --with-deps chromium
       - run: pnpm --filter @streamingapp/admin-web test:e2e:mock
+
+  web:
+    name: Viewer web
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @streamingapp/web lint
+      - run: pnpm --filter @streamingapp/web typecheck
+      - run: pnpm --filter @streamingapp/web test
+      - run: pnpm --filter @streamingapp/web build
+      - run: pnpm --filter @streamingapp/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @streamingapp/web test:e2e
 
   mobile:
     name: Mobile
