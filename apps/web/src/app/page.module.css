@@ -1,0 +1,127 @@
+.hero {
+  position: relative;
+  overflow: hidden;
+  min-height: 420px;
+  display: flex;
+  align-items: flex-end;
+  padding: 72px 0 40px;
+  isolation: isolate;
+}
+
+.heroBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+.heroBackdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, var(--bg) 4%, rgba(10, 12, 17, 0.55) 55%, rgba(10, 12, 17, 0.35)),
+    linear-gradient(to right, rgba(10, 12, 17, 0.9), rgba(10, 12, 17, 0.1) 70%);
+}
+
+.heroBackdrop .heroImage {
+  position: absolute;
+  inset: 0;
+  aspect-ratio: auto;
+  border-radius: 0;
+  height: 100%;
+}
+
+.heroContent {
+  max-width: var(--max-width);
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+
+.heroTitle {
+  font-size: clamp(2rem, 6vw, 3.6rem);
+  max-width: 16ch;
+  margin-bottom: 14px;
+}
+
+.heroText {
+  max-width: 60ch;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.emptyHero {
+  padding-top: 64px;
+  padding-bottom: 24px;
+}
+
+.perks {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+.perks li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.perks span {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+@media (min-width: 720px) {
+  .perks {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .hero {
+    min-height: 520px;
+  }
+}
+
+.cta {
+  margin-top: 56px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 122, 26, 0.35);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 122, 26, 0.22), transparent 55%),
+    radial-gradient(circle at 100% 100%, rgba(255, 61, 110, 0.18), transparent 50%),
+    var(--surface);
+}
+
+.cta h2 {
+  margin-bottom: 6px;
+}
+
+.cta p {
+  margin: 0;
+}

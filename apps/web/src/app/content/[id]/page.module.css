@@ -1,0 +1,136 @@
+.article {
+  padding: 28px 0 56px;
+}
+
+.layout {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 40px;
+  }
+}
+
+.media {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.info {
+  min-width: 0;
+}
+
+.back {
+  display: inline-block;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.title {
+  font-size: clamp(1.8rem, 4.5vw, 2.6rem);
+}
+
+.description {
+  color: var(--text-muted);
+  white-space: pre-line;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.lockedNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--premium);
+  font-weight: 600;
+}
+
+.sectionTitle {
+  margin-top: 48px;
+  font-size: 1.4rem;
+}
+
+.lessons {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lesson {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.lesson[data-locked="true"] {
+  background: linear-gradient(90deg, var(--surface), rgba(244, 193, 82, 0.05));
+}
+
+.lessonIndex {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.lessonBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lessonTitle {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lessonMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-subtle);
+  font-size: 0.85rem;
+}
+
+.lessonAction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

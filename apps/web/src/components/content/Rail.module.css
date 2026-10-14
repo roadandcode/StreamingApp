@@ -1,0 +1,40 @@
+.rail {
+  margin-top: 40px;
+}
+
+.title {
+  font-size: 1.3rem;
+  margin-bottom: 14px;
+}
+
+.track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 72%;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 10px;
+  margin: 0 calc(var(--gutter) * -1);
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+  scroll-padding-left: var(--gutter);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+@media (min-width: 560px) {
+  .track {
+    grid-auto-columns: 44%;
+  }
+}
+
+@media (min-width: 900px) {
+  .track {
+    grid-auto-columns: calc((100% - 3 * 16px) / 4);
+    margin: 0;
+    padding-left: 0;
+    padding-right: 0;
+    scroll-padding-left: 0;
+  }
+}

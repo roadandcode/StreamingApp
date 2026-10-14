@@ -1,0 +1,25 @@
+.footer {
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 28px 0;
+  margin-top: 32px;
+}
+
+.inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.9rem;
+}
+
+.brand {
+  margin: 0;
+}
+
+.links {
+  display: flex;
+  gap: 18px;
+  color: var(--text-muted);
+}

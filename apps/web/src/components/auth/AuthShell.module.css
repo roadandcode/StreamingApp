@@ -1,0 +1,19 @@
+.wrap {
+  display: flex;
+  justify-content: center;
+  padding-top: 48px;
+  padding-bottom: 64px;
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 122, 26, 0.12), transparent 45%),
+    var(--surface);
+}
+
+.title {
+  font-size: 1.7rem;
+  margin-bottom: 6px;
+}
