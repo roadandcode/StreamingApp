@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: streaming
+          POSTGRES_PASSWORD: streaming
+          POSTGRES_DB: streaming_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U streaming"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://streaming:streaming@localhost:5432/streaming_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @streamingapp/api lint
+      - run: pnpm --filter @streamingapp/api typecheck
+      - run: pnpm --filter @streamingapp/api test
+      - run: pnpm --filter @streamingapp/api test:e2e
+      - run: pnpm --filter @streamingapp/api build
+      - name: OpenAPI document is up to date
+        run: |
+          pnpm --filter @streamingapp/api openapi:emit
+          git diff --exit-code -- packages/api-contracts
+
+  admin-web:
+    name: Admin web
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      API_BASE_URL: http://localhost:3100
+      SESSION_COOKIE_SECRET: ci-only-session-cookie-secret-0123456789
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @streamingapp/admin-web lint
+      - run: pnpm --filter @streamingapp/admin-web typecheck
+      - run: pnpm --filter @streamingapp/admin-web build
+      - run: pnpm --filter @streamingapp/admin-web exec playwright install --with-deps chromium
+      - run: pnpm --filter @streamingapp/admin-web test:e2e:mock
+
+  mobile:
+    name: Mobile
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
