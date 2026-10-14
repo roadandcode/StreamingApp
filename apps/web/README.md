@@ -62,7 +62,9 @@ Against a real API (fake media and billing providers):
    `FAKE_SAMPLE_MANIFEST_URL=http://localhost:3200/sample/master.m3u8`. Playwright's Chromium cannot
    decode H.264, so the API's default sample stream would fail to play; the mock (still started, but
    only used for this stream) serves a VP9 one.
-2. Make sure the seeded catalog has a course with at least one premium lesson.
+2. Make sure the seeded catalog has a course with at least one premium lesson, and pass its id as
+   `E2E_COURSE_ID`. With the API's seed data that is the "Premium Masterclass" course,
+   `5eed0000-0000-4000-8000-000000000011`.
 3. Run:
 
    ```bash
