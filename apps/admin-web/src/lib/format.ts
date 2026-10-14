@@ -30,7 +30,12 @@ export function formatDuration(seconds: number | null | undefined): string {
 }
 
 const PLATFORM_LABELS: Record<string, string> = { android: "Android", ios: "iOS", web: "Web" };
-const PROVIDER_LABELS: Record<string, string> = { apple: "App Store", google: "Google Play", fake: "Test billing" };
+const PROVIDER_LABELS: Record<string, string> = {
+  apple: "App Store",
+  google: "Google Play",
+  razorpay: "Razorpay (web)",
+  fake: "Test billing",
+};
 
 export function platformLabel(platform: string): string {
   return PLATFORM_LABELS[platform] ?? platform;

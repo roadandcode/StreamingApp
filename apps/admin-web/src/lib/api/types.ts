@@ -17,7 +17,8 @@ export type AccessTier = "free" | "premium";
 export type PublicationStatus = "draft" | "published" | "unpublished";
 export type ProcessingStatus = "awaiting_upload" | "processing" | "ready" | "failed";
 export type Platform = "android" | "ios" | "web";
-export type BillingProvider = "apple" | "google" | "fake";
+export type BillingProvider = "apple" | "google" | "razorpay" | "fake";
+export type DrmSystem = "widevine" | "fairplay" | "playready";
 export type SubscriptionStatus =
   | "none"
   | "pending"
@@ -112,10 +113,11 @@ export interface PlaybackAuthorization {
   expiresAt: string;
   heartbeatIntervalSeconds: number;
   drm: null | {
-    system: "widevine" | "fairplay";
+    system: DrmSystem;
     licenseUrl: string;
     certificateUrl: string | null;
-    token: string;
+    /** Sent exactly as given on every license request; secret values. */
+    licenseRequestHeaders: Record<string, string>;
   };
 }
 
@@ -170,11 +172,19 @@ export type ApiErrorCode =
   | "RATE_LIMITED"
   | "PROVIDER_NOT_CONFIGURED";
 
+/** One invalid request field; `field` is its path, e.g. "title" or "regions.0". */
+export interface FieldError {
+  field: string;
+  message: string;
+}
+
 /** Body of every error response. */
 export interface ApiErrorBody {
   statusCode: number;
   code: ApiErrorCode;
   message: string;
+  /** Present on 400 VALIDATION_FAILED. */
+  errors?: FieldError[];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -207,7 +217,10 @@ export interface RefreshResponse {
 // Admin endpoints
 // ---------------------------------------------------------------------------------------------
 
-/** Query of GET /v1/admin/content */
+/**
+ * Query of GET /v1/admin/content. Without `parentId` it lists top-level items (courses and
+ * standalone videos), newest `updatedAt` first; with `parentId`, that item's children by position.
+ */
 export interface AdminContentListQuery {
   kind?: ContentKind;
   status?: PublicationStatus;
@@ -224,18 +237,31 @@ export interface CreateContentRequest {
   accessTier: AccessTier;
   defaultLanguage: string;
   ageRating?: string | null;
+  thumbnailUrl?: string | null;
   parentId?: string;
+  /** 0-based among siblings; omitted puts the item last. */
   position?: number;
   regions: string[];
 }
 
-/** Body of PATCH /v1/admin/content/:id — any subset of the create fields. */
-export type UpdateContentRequest = Partial<CreateContentRequest>;
+/**
+ * Body of PATCH /v1/admin/content/:id. `kind` and `parentId` cannot change (the API answers 400 if
+ * they are sent); `null` clears `ageRating` and `thumbnailUrl`.
+ */
+export type UpdateContentRequest = Partial<
+  Pick<
+    CreateContentRequest,
+    "title" | "description" | "accessTier" | "defaultLanguage" | "ageRating" | "thumbnailUrl" | "position" | "regions"
+  >
+>;
 
 /** 200 from GET /v1/admin/content/:id */
 export type AdminContentWithChildren = AdminContent & { children: AdminContent[] };
 
-/** 201 from POST /v1/admin/content/:id/upload-session */
+/**
+ * 201 from POST /v1/admin/content/:id/upload-session (400 for a course). The file is PUT to
+ * `uploadUrl` with `headers` exactly as given (possibly none); success is 204.
+ */
 export interface UploadSession {
   videoAssetId: string;
   uploadUrl: string;
@@ -250,10 +276,12 @@ export interface AdminUserListItem {
   subscription: SubscriptionView;
 }
 
-/** Query of GET /v1/admin/users */
+/** Query of GET /v1/admin/users. Without `email` it lists everyone, newest first. */
 export interface AdminUserListQuery {
-  email: string;
+  /** Case-insensitive substring. */
+  email?: string;
   page?: number;
+  pageSize?: number;
 }
 
 export interface ActivePlaybackSession {
