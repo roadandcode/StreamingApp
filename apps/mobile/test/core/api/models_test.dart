@@ -177,16 +177,28 @@ void main() {
           'system': 'fairplay',
           'licenseUrl': 'https://drm.example.com/license',
           'certificateUrl': 'https://drm.example.com/cert',
-          'token': 'license-token',
+          'licenseRequestHeaders': {'X-Vendor-Token': 'license-token'},
         },
       );
       expect(auth.drm?.system, DrmSystem.fairplay);
       expect(auth.drm?.certificateUrl, 'https://drm.example.com/cert');
+      expect(auth.drm?.licenseRequestHeaders, {
+        'X-Vendor-Token': 'license-token',
+      });
       expect(auth.toString(), isNot(contains('license-token')));
     });
   });
 
   test('asJson rejects non-objects', () {
     expect(() => asJson([1, 2]), throwsFormatException);
+  });
+
+  test('readStringMap rejects non-string values', () {
+    expect(
+      () => readStringMap({
+        'licenseRequestHeaders': {'X-Vendor-Token': 42},
+      }, 'licenseRequestHeaders'),
+      throwsFormatException,
+    );
   });
 }

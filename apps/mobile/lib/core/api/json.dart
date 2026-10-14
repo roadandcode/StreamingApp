@@ -62,6 +62,21 @@ DateTime? readNullableDateTime(Json json, String key) {
   return readDateTime(json, key);
 }
 
+Map<String, String> readStringMap(Json json, String key) {
+  final result = <String, String>{};
+  for (final entry in asJson(json[key], key).entries) {
+    final value = entry.value;
+    if (value is! String) {
+      throw FormatException(
+        'Expected "$key.${entry.key}" to be a string',
+        value,
+      );
+    }
+    result[entry.key] = value;
+  }
+  return Map.unmodifiable(result);
+}
+
 List<T> readList<T>(Json json, String key, T Function(Json item) parse) {
   return asJsonList(
     json[key],

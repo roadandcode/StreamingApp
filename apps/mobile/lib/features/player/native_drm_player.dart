@@ -14,8 +14,9 @@ import 'protected_player.dart';
 /// * add `androidx.media3:media3-exoplayer`, `-exoplayer-hls` and `-ui`;
 /// * build the `MediaItem` from `manifestUrl` with
 ///   `MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)`,
-///   `setLicenseUri(drm.licenseUrl)` and the license token in
-///   `setLicenseRequestHeaders` (header name to be agreed with the API team);
+///   `setLicenseUri(drm.licenseUrl)` and
+///   `setLicenseRequestHeaders(drm.licenseRequestHeaders)`, passed through
+///   unchanged;
 /// * check `MediaDrm.isCryptoSchemeSupported(C.WIDEVINE_UUID)` and the
 ///   `securityLevel` property (L1 vs L3) and report failures as errors;
 /// * render into a secure `SurfaceView` (`setSecure(true)`) exposed as a
@@ -25,14 +26,14 @@ import 'protected_player.dart';
 /// TODO(ios, after the Android launch): implement the channel in
 /// AppDelegate.swift with AVPlayer and FairPlay: fetch the application
 /// certificate from `drm.certificateUrl`, use an `AVContentKeySession`
-/// delegate to create the SPC, post it with the license token to
+/// delegate to create the SPC, post it with `drm.licenseRequestHeaders` to
 /// `drm.licenseUrl`, and hand the CKC back to AVFoundation. Render with an
 /// `AVPlayerLayer` platform view.
 ///
 /// Channel methods (planned): `create` {manifestUrl, drm: {system,
-/// licenseUrl, certificateUrl, token}} -> {textureOrViewId}, `play`, `pause`,
+/// licenseUrl, certificateUrl, licenseRequestHeaders}} -> {textureOrViewId}, `play`, `pause`,
 /// `seekTo` {positionMs}, `position` -> positionMs, `dispose`. Native code must
-/// never log the manifest URL or license token.
+/// never log the manifest URL or the license request headers.
 class NativeDrmPlayer extends ChangeNotifier implements ProtectedPlayer {
   NativeDrmPlayer({MethodChannel? channel})
     : channel = channel ?? defaultChannel;

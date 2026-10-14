@@ -276,7 +276,7 @@ void main() {
             'system': 'widevine',
             'licenseUrl': 'https://drm.example.com/license',
             'certificateUrl': null,
-            'token': 'license-token',
+            'licenseRequestHeaders': {'X-Vendor-Token': 'license-token'},
           },
         ),
       );

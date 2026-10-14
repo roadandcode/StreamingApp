@@ -426,22 +426,22 @@ class Device {
   final DateTime? revokedAt;
 }
 
-/// DRM parameters of a playback authorization. Contains a license token:
-/// never log an instance of this class.
+/// DRM parameters of a playback authorization. The license request headers
+/// carry a short-lived license token: never log an instance of this class.
 @immutable
 class DrmConfig {
   const DrmConfig({
     required this.system,
     required this.licenseUrl,
     required this.certificateUrl,
-    required this.token,
+    required this.licenseRequestHeaders,
   });
 
   factory DrmConfig.fromJson(Json json) => DrmConfig(
     system: DrmSystem.fromWire(readNullableString(json, 'system')),
     licenseUrl: readString(json, 'licenseUrl'),
     certificateUrl: readNullableString(json, 'certificateUrl'),
-    token: readString(json, 'token'),
+    licenseRequestHeaders: readStringMap(json, 'licenseRequestHeaders'),
   );
 
   final DrmSystem system;
@@ -450,8 +450,9 @@ class DrmConfig {
   /// FairPlay application certificate.
   final String? certificateUrl;
 
-  /// Short-lived license token.
-  final String token;
+  /// Headers to send, exactly as given, on every license request. Their names
+  /// depend on the DRM vendor, so they are never hardcoded in the app.
+  final Map<String, String> licenseRequestHeaders;
 
   @override
   String toString() => 'DrmConfig(${system.name}, <redacted>)';
