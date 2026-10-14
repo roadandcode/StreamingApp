@@ -1,6 +1,7 @@
 packages:
   - services/*
   - apps/admin-web
+  - apps/web
   - packages/*
 
 # pnpm 10 blocks dependency install scripts unless they are listed here.

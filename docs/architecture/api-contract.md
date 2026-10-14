@@ -63,7 +63,8 @@ type AccessTier = "free" | "premium";
 type PublicationStatus = "draft" | "published" | "unpublished";
 type ProcessingStatus = "awaiting_upload" | "processing" | "ready" | "failed";
 type Platform = "android" | "ios" | "web";
-type BillingProvider = "apple" | "google" | "fake";
+type BillingProvider = "apple" | "google" | "razorpay" | "fake";
+type DrmSystem = "widevine" | "fairplay" | "playready";
 type SubscriptionStatus =
   | "none" | "pending" | "active" | "grace_period" | "billing_retry"
   | "cancelled" | "expired" | "refunded" | "revoked";
@@ -123,7 +124,7 @@ interface PlaybackAuthorization {
   expiresAt: string;                  // playback authorization expiry, extended by heartbeats
   heartbeatIntervalSeconds: number;
   drm: null | {
-    system: "widevine" | "fairplay";
+    system: DrmSystem;
     licenseUrl: string;
     certificateUrl: string | null;    // FairPlay application certificate
     token: string;                    // short-lived license token
@@ -184,9 +185,39 @@ otherwise `DEFAULT_COUNTRY_CODE` (default `IN`). Clients cannot choose their cou
 `provider: "fake"` any string the fake verifier accepts (see below). The server verifies it with the
 provider; the client never asserts its own status.
 
+`provider: "razorpay"` is not used with this endpoint; web purchases go through the Razorpay checkout
+endpoints below.
+
 `hasAccess` is `true` only while `accessUntil` is in the future **and** the status is `active`,
 `grace_period` or `cancelled` (auto-renew turned off but the paid period has not ended). It is always
 `false` for `none`, `pending`, `billing_retry`, `expired`, `refunded` and `revoked`.
+
+### Web checkout (Razorpay)
+
+| Method | Path | Auth | Body | Response |
+|---|---|---|---|---|
+| POST | `/v1/checkout/razorpay/subscriptions` | bearer | `{ planCode }` | `201 { razorpaySubscriptionId, keyId, planCode }` |
+| POST | `/v1/checkout/razorpay/verify` | bearer | `{ razorpaySubscriptionId, razorpayPaymentId, razorpaySignature }` | `200 SubscriptionView` |
+
+1. The web app asks the API to create a Razorpay subscription for a plan. The API calls the Razorpay
+   Subscriptions API with the plan's Razorpay `plan_id` (the plan's `storeProducts` entry with
+   `provider: "razorpay"`) and stores a `pending` subscription linked to the user.
+2. The browser opens Razorpay Checkout with `keyId` and `razorpaySubscriptionId`.
+3. Checkout returns `razorpay_payment_id`, `razorpay_subscription_id` and `razorpay_signature`; the web
+   app sends them to `/verify`. The API checks
+   `razorpay_signature == hex(HMAC-SHA256(key_secret, razorpay_payment_id + "|" + razorpay_subscription_id))`,
+   confirms the subscription belongs to the caller, fetches its current state from Razorpay, and
+   applies it. Bad signature → `400 INVALID_PURCHASE`; someone else's subscription →
+   `409 PURCHASE_BELONGS_TO_OTHER_ACCOUNT`.
+4. Renewals, failures and cancellations arrive by webhook (below); `/verify` is only the fast path.
+
+Without `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` both endpoints return
+`503 PROVIDER_NOT_CONFIGURED`. In fake billing mode the web app uses `POST /v1/purchases/verify` with
+`provider: "fake"` instead, exactly like the mobile app.
+
+Entitlements are per account, not per billing channel: a subscription bought on the web unlocks the
+Android app and vice versa. The Android app must not link to or advertise web checkout (Google Play
+policy).
 
 ### Devices
 
@@ -196,15 +227,22 @@ provider; the client never asserts its own status.
 | POST | `/v1/me/devices` | bearer | `{ installationId, platform, name }` | `201 Device` new, `200 Device` if this user already registered that `installationId`; `403 DEVICE_REVOKED` if it was revoked; `409 DEVICE_LIMIT_REACHED` |
 | DELETE | `/v1/me/devices/:id` | bearer | — | `204` — revokes the device and ends its playback sessions |
 
-`installationId` is a UUID the app generates once and keeps in secure storage.
+`installationId` is a UUID the app generates once and keeps in secure storage. The web app generates
+one per browser and keeps it in a long-lived httpOnly cookie; each browser counts as one device
+(`platform: "web"`).
 
 ### Playback
 
 | Method | Path | Auth | Body | Response |
 |---|---|---|---|---|
-| POST | `/v1/playback/sessions` | bearer | `{ contentId, deviceId }` | `201 PlaybackAuthorization` |
+| POST | `/v1/playback/sessions` | bearer | `{ contentId, deviceId, supportedDrm? }` | `201 PlaybackAuthorization` |
 | POST | `/v1/playback/sessions/:id/heartbeat` | bearer | `{ positionSeconds? }` | `200 { expiresAt }` |
 | DELETE | `/v1/playback/sessions/:id` | bearer | — | `204` |
+
+`supportedDrm` is an optional `DrmSystem[]` the client can actually play (browsers report what their
+EME implementation supports; Android sends `["widevine"]`). The media provider picks the DRM system
+from it; if none of them is usable for premium content in production, the request fails with
+`403 CONTENT_NOT_PLAYABLE`.
 
 Checks for a new session, in order (first failure wins):
 1. Account active → else `403 ACCOUNT_INACTIVE`.
@@ -226,7 +264,20 @@ Clients send heartbeats every `heartbeatIntervalSeconds` and stop the player on 
 |---|---|---|
 | POST | `/v1/webhooks/apple` | App Store Server Notifications v2. Stub returns `503 PROVIDER_NOT_CONFIGURED` until configured. |
 | POST | `/v1/webhooks/google` | Play Real-time Developer Notifications (Pub/Sub push). Stub returns `503 PROVIDER_NOT_CONFIGURED` until configured. |
+| POST | `/v1/webhooks/razorpay` | Razorpay webhooks. Verify `X-Razorpay-Signature` = hex HMAC-SHA256 of the raw body with `RAZORPAY_WEBHOOK_SECRET`; `eventId` comes from the `X-Razorpay-Event-Id` header. Returns `503 PROVIDER_NOT_CONFIGURED` when Razorpay is not configured. |
 | POST | `/v1/webhooks/fake` | Only mounted when `BILLING_MODE=fake` and not production. |
+
+Razorpay event mapping (subscription entity in the payload):
+
+| Razorpay event | Subscription status | Notes |
+|---|---|---|
+| `subscription.authenticated` | `pending` | Mandate set up, no successful charge yet |
+| `subscription.activated`, `subscription.charged` | `active` | `current_period_end` = subscription `current_end`; record the payment in `billing_transactions` |
+| `subscription.pending` | `billing_retry` | Charge failed, Razorpay is retrying; no access |
+| `subscription.halted` | `expired` | Retries exhausted |
+| `subscription.cancelled` | `cancelled` | Access continues until `current_end` |
+| `subscription.completed` | `expired` | All billing cycles done |
+| `refund.processed` | `refunded` | When it refunds the latest charge of a subscription |
 
 All handlers: verify authenticity first, store the event in `provider_events` keyed by
 `(provider, eventId)`, return `200 { "duplicate": true }` for a repeat without re-applying it, and
@@ -283,7 +334,7 @@ mode when `NODE_ENV=production`.
 | `JWT_ACCESS_SECRET` | — (required, ≥ 32 chars) | |
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` | |
 | `REFRESH_TOKEN_TTL_DAYS` | `30` | |
-| `CORS_ORIGINS` | `http://localhost:3001` | comma-separated |
+| `CORS_ORIGINS` | `http://localhost:3001,http://localhost:3002` | comma-separated (admin web, viewer web). The fake media routes must send CORS headers for these origins because the web player fetches them directly. |
 | `DEFAULT_COUNTRY_CODE` | `IN` | |
 | `TRUSTED_COUNTRY_HEADER` | unset | e.g. `cloudfront-viewer-country` behind the CDN |
 | `MAX_DEVICES` | `3` | |
@@ -296,9 +347,16 @@ mode when `NODE_ENV=production`.
 | `FAKE_SAMPLE_MANIFEST_URL` | a public test HLS stream | |
 | `BILLING_MODE` | `fake` | `fake` \| `live` |
 | `FAKE_WEBHOOK_SECRET` | — | required when `BILLING_MODE=fake` |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` / `RAZORPAY_WEBHOOK_SECRET` | unset | web checkout; unset means `503 PROVIDER_NOT_CONFIGURED` |
+| `RAZORPAY_PLAN_ID_MONTHLY` / `RAZORPAY_PLAN_ID_YEARLY` | unset | Razorpay `plan_id`s the seed maps to `premium_monthly` / `premium_yearly` |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | — | used by the seed script only |
 
 ## Client configuration
+
+- **Viewer web** (`apps/web`, port `3002`): `API_BASE_URL` (default `http://localhost:3000`),
+  `SESSION_COOKIE_SECRET`, `NEXT_PUBLIC_FAKE_BILLING`, `REQUIRE_DRM`, `WEB_MAX_VIDEO_HEIGHT` (default
+  `720`). Tokens live only in httpOnly cookies set by Next route handlers; the browser talks to the API
+  only through the web app's own server, except for media/DRM URLs and Razorpay Checkout.
 
 - **Admin web** (`apps/admin-web`, port `3001`): `API_BASE_URL` (default `http://localhost:3000`),
   `SESSION_COOKIE_SECRET`. Tokens live only in httpOnly cookies set by Next route handlers.
