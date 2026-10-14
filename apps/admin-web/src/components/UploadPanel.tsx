@@ -83,7 +83,15 @@ function initialPhase(status: ProcessingStatus | null): Phase {
  * panel must never be remounted by such updates: that would abort the upload. It only adopts
  * the server status while it is not busy.
  */
-export function UploadPanel({ contentId, serverStatus }: { contentId: string; serverStatus: ProcessingStatus | null }) {
+export function UploadPanel({
+  contentId,
+  serverStatus,
+  published,
+}: {
+  contentId: string;
+  serverStatus: ProcessingStatus | null;
+  published: boolean;
+}) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>(() => initialPhase(serverStatus));
   const [seenServerStatus, setSeenServerStatus] = useState(serverStatus);
@@ -152,7 +160,10 @@ export function UploadPanel({ contentId, serverStatus }: { contentId: string; se
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!file || busy) return;
-    if (hasReadyVideo && !window.confirm("Replace the current video? The new upload has to be processed again.")) {
+    const replaceWarning = published
+      ? "Replace the video of this published item? Viewers cannot play it until the new video has finished processing. Unpublish first if that gap is not acceptable."
+      : "Replace the current video? The new upload has to be processed again.";
+    if (hasReadyVideo && !window.confirm(replaceWarning)) {
       return;
     }
 

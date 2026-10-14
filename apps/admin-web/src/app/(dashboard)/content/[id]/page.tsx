@@ -24,6 +24,35 @@ function publishBlockedReason(content: AdminContent): string | null {
   return "Upload a video and wait until it is ready before publishing.";
 }
 
+/**
+ * Who can see this item. A lesson is visible only while both the lesson and its course are
+ * published; a lesson may be published first so a whole course can be released in one step.
+ */
+function visibilityText(content: AdminContent, parent: AdminContent | null): string {
+  const regions = content.regions.join(", ");
+  if (content.kind !== "lesson") {
+    return content.publicationStatus === "published" ? `Visible to viewers in ${regions}.` : "Not visible to viewers.";
+  }
+  const course = parent ? `the course “${parent.title}”` : "its course";
+  const coursePublished = parent?.publicationStatus === "published";
+  if (content.publicationStatus === "published") {
+    if (parent === null) {
+      return `Published. Viewers see this lesson only while ${course} is also published.`;
+    }
+    return coursePublished
+      ? `Visible to viewers in ${regions}, because ${course} is published too.`
+      : `Published, but hidden from viewers until ${course} is published.`;
+  }
+  return coursePublished
+    ? "Not visible to viewers. Publish it to show it in the course."
+    : `Not visible to viewers. A published lesson becomes visible once ${course} is published too.`;
+}
+
+/** Lessons in course order: position (0-based), ties by creation time. */
+function sortLessons(children: AdminContent[]): AdminContent[] {
+  return [...children].sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt));
+}
+
 export default async function ContentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isUuid(id)) {
@@ -42,7 +71,8 @@ export default async function ContentDetailPage({ params }: { params: Promise<{ 
     parent = parentResult?.ok ? parentResult.data : null;
   }
 
-  const lessons = [...content.children].sort((a, b) => a.position - b.position);
+  const lessons = sortLessons(content.children);
+  const publishedLessons = lessons.filter((lesson) => lesson.publicationStatus === "published").length;
   const playable = content.kind !== "course";
 
   return (
@@ -76,13 +106,8 @@ export default async function ContentDetailPage({ params }: { params: Promise<{ 
             <PublicationBadge status={content.publicationStatus} />
           </span>
         </div>
-        <p className="muted" style={{ marginTop: 0 }}>
-          {content.publicationStatus === "published"
-            ? `Visible to viewers in ${content.regions.join(", ")}.`
-            : "Not visible to viewers."}
-          {content.kind === "lesson" && parent && parent.publicationStatus !== "published"
-            ? " The course itself is not published yet."
-            : null}
+        <p className="muted" style={{ marginTop: 0 }} data-testid="visibility-hint">
+          {visibilityText(content, parent)}
         </p>
         <PublishControls
           key={content.id}
@@ -94,7 +119,12 @@ export default async function ContentDetailPage({ params }: { params: Promise<{ 
       </section>
 
       {playable ? (
-        <UploadPanel key={content.id} contentId={content.id} serverStatus={content.asset?.processingStatus ?? null} />
+        <UploadPanel
+          key={content.id}
+          contentId={content.id}
+          serverStatus={content.asset?.processingStatus ?? null}
+          published={content.publicationStatus === "published"}
+        />
       ) : null}
 
       {content.kind === "course" ? (
@@ -105,6 +135,12 @@ export default async function ContentDetailPage({ params }: { params: Promise<{ 
               Add lesson
             </Link>
           </div>
+          <p className="hint" style={{ marginTop: 0, marginBottom: "0.75rem" }}>
+            Viewers see a lesson only while both the lesson and this course are published.
+            {content.publicationStatus !== "published" && publishedLessons > 0
+              ? ` Publishing this course releases its ${publishedLessons} published lesson${publishedLessons === 1 ? "" : "s"}.`
+              : null}
+          </p>
           {lessons.length === 0 ? (
             <p className="empty">No lessons yet.</p>
           ) : (
@@ -120,9 +156,9 @@ export default async function ContentDetailPage({ params }: { params: Promise<{ 
                   </tr>
                 </thead>
                 <tbody>
-                  {lessons.map((lesson) => (
+                  {lessons.map((lesson, index) => (
                     <tr key={lesson.id}>
-                      <td>{lesson.position}</td>
+                      <td title={`Position ${lesson.position}`}>{index + 1}</td>
                       <td>
                         <Link href={`/content/${lesson.id}`}>{lesson.title}</Link>
                       </td>

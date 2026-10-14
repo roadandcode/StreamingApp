@@ -244,7 +244,9 @@ export function ContentForm({ mode, action, initialValues, kindOptions, parent, 
               aria-describedby={describedBy("position", "position-hint")}
             />
             <p className="hint" id="position-hint">
-              {mode === "create" ? "Leave blank to add after the last lesson." : "Order within the course."}
+              {mode === "create"
+                ? "Leave blank to add after the last lesson. 0 is first."
+                : "Order within the course; 0 is first."}
             </p>
             {fieldError("position")}
           </div>

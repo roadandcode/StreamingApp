@@ -4,12 +4,7 @@ import { ErrorPanel } from "@/components/ErrorPanel";
 import { Pagination } from "@/components/Pagination";
 import { Badge, ProcessingBadge, PublicationBadge } from "@/components/StatusBadge";
 import { listContent } from "@/lib/api/admin";
-import {
-  CONTENT_KINDS,
-  PUBLICATION_STATUSES,
-  type ContentKind,
-  type PublicationStatus,
-} from "@/lib/api/types";
+import { PUBLICATION_STATUSES, type ContentKind, type PublicationStatus } from "@/lib/api/types";
 import { formatDateTime, humanize } from "@/lib/format";
 import { firstParam, loadPageData, pageParam, type SearchParams } from "@/lib/page-data";
 
@@ -17,11 +12,14 @@ export const metadata: Metadata = { title: "Content" };
 
 const PAGE_SIZE = 20;
 
+/** Without parentId the API lists top-level items only; lessons are listed on their course. */
+const LIST_KINDS: readonly ContentKind[] = ["course", "video"];
+
 export default async function ContentListPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const kindParam = firstParam(params, "kind");
   const statusParam = firstParam(params, "status");
-  const kind = CONTENT_KINDS.includes(kindParam as ContentKind) ? (kindParam as ContentKind) : undefined;
+  const kind = LIST_KINDS.includes(kindParam as ContentKind) ? (kindParam as ContentKind) : undefined;
   const status = PUBLICATION_STATUSES.includes(statusParam as PublicationStatus)
     ? (statusParam as PublicationStatus)
     : undefined;
@@ -43,7 +41,7 @@ export default async function ContentListPage({ searchParams }: { searchParams: 
       <div className="page-header">
         <div>
           <h1>Content</h1>
-          <p>Courses, lessons and standalone videos.</p>
+          <p>Courses and standalone videos, newest changes first. Lessons are listed on their course.</p>
         </div>
         <div className="actions">
           <Link href="/content/new?kind=course" className="btn btn-primary">
@@ -61,7 +59,7 @@ export default async function ContentListPage({ searchParams }: { searchParams: 
             <label htmlFor="filter-kind">Type</label>
             <select id="filter-kind" name="kind" defaultValue={kind ?? ""}>
               <option value="">All types</option>
-              {CONTENT_KINDS.map((option) => (
+              {LIST_KINDS.map((option) => (
                 <option key={option} value={option}>
                   {humanize(option)}
                 </option>
