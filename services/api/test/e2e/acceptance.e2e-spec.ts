@@ -106,7 +106,18 @@ describe('acceptance path (e2e)', () => {
   });
 
   it('authorizes free playback: 201 with a short-lived manifest URL', async () => {
-    const response = await startPlayback(SEED_IDS.freeLesson1).expect(201);
+    const unknownDrm = await http(ctx.app)
+      .post('/v1/playback/sessions')
+      .set(bearer(viewer.accessToken))
+      .send({ contentId: SEED_IDS.freeLesson1, deviceId, supportedDrm: ['clearkey'] })
+      .expect(400);
+    expect(unknownDrm.body.code).toBe('VALIDATION_FAILED');
+
+    const response = await http(ctx.app)
+      .post('/v1/playback/sessions')
+      .set(bearer(viewer.accessToken))
+      .send({ contentId: SEED_IDS.freeLesson1, deviceId, supportedDrm: ['widevine', 'playready'] })
+      .expect(201);
     const body = response.body as PlaybackAuthorizationBody;
     expect(body).toMatchObject({ contentId: SEED_IDS.freeLesson1, heartbeatIntervalSeconds: 30, drm: null });
     expect(body.manifestUrl).toMatch(

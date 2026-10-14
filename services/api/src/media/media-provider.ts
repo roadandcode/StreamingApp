@@ -1,3 +1,4 @@
+import type { DrmSystem } from '../common/enums';
 import type { Platform, ProcessingStatus } from '../database/schema';
 
 /**
@@ -13,12 +14,15 @@ export interface UploadSession {
 }
 
 export interface DrmAuthorization {
-  system: 'widevine' | 'fairplay';
+  system: DrmSystem;
   licenseUrl: string;
-  /** FairPlay application certificate URL; null for Widevine. */
+  /** FairPlay application certificate URL; null otherwise. */
   certificateUrl: string | null;
-  /** Short-lived license token bound to the playback session. */
-  token: string;
+  /**
+   * Headers the player sends on every license request. They carry the short-lived license token
+   * bound to the playback session; names are vendor-specific. Secret: never log them.
+   */
+  licenseRequestHeaders: Record<string, string>;
 }
 
 export interface PlaybackAuthorizationRequest {
@@ -26,6 +30,8 @@ export interface PlaybackAuthorizationRequest {
   playbackSessionId: string;
   platform: Platform;
   ttlSeconds: number;
+  /** DRM systems the client can play, as reported by it; the provider picks one. */
+  supportedDrm?: DrmSystem[];
 }
 
 export interface ProviderPlaybackAuthorization {

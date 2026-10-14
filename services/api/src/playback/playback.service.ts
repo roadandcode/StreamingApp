@@ -119,6 +119,7 @@ export class PlaybackService {
         playbackSessionId: session.id,
         platform: device.platform,
         ttlSeconds: this.config.get('PLAYBACK_AUTH_TTL_SECONDS'),
+        supportedDrm: dto.supportedDrm,
       });
       await tx.update(playbackSessions).set({ expiresAt: authorization.expiresAt }).where(eq(playbackSessions.id, session.id));
       await tx.update(devices).set({ lastSeenAt: now }).where(eq(devices.id, dto.deviceId));

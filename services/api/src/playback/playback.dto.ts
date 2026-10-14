@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { DRM_SYSTEMS, type DrmSystem } from '../common/enums';
 
 export class CreatePlaybackSessionDto {
   @ApiProperty({ format: 'uuid' })
@@ -9,6 +10,19 @@ export class CreatePlaybackSessionDto {
   @ApiProperty({ format: 'uuid', description: 'A device registered with POST /v1/me/devices' })
   @IsUUID()
   deviceId: string;
+
+  @ApiPropertyOptional({
+    enum: DRM_SYSTEMS,
+    enumName: 'DrmSystem',
+    isArray: true,
+    description: 'DRM systems this client can play (browsers: what EME supports; Android: ["widevine"]).',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(DRM_SYSTEMS.length)
+  @ArrayUnique()
+  @IsIn(DRM_SYSTEMS, { each: true })
+  supportedDrm?: DrmSystem[];
 }
 
 export class HeartbeatDto {
@@ -21,8 +35,8 @@ export class HeartbeatDto {
 }
 
 export class DrmDto {
-  @ApiProperty({ enum: ['widevine', 'fairplay'], enumName: 'DrmSystem' })
-  system: 'widevine' | 'fairplay';
+  @ApiProperty({ enum: DRM_SYSTEMS, enumName: 'DrmSystem' })
+  system: DrmSystem;
 
   @ApiProperty()
   licenseUrl: string;
@@ -30,8 +44,14 @@ export class DrmDto {
   @ApiProperty({ type: String, nullable: true, description: 'FairPlay application certificate' })
   certificateUrl: string | null;
 
-  @ApiProperty({ description: 'Short-lived license token' })
-  token: string;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description:
+      'Headers to send on every license request, exactly as given (they carry the short-lived license ' +
+      'token; names depend on the DRM vendor). Treat the values as secrets.',
+  })
+  licenseRequestHeaders: Record<string, string>;
 }
 
 export class PlaybackAuthorizationDto {

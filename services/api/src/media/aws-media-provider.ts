@@ -35,8 +35,11 @@ export class AwsMediaProvider implements MediaProvider {
     void request;
     // TODO: sign a CloudFront URL or signed cookies (key group, short expiry bound to the playback
     //   session) for the manifest and segments, and fetch a short-lived license token from the
-    //   multi-DRM vendor: Widevine for android, FairPlay (with the application certificate URL) for
-    //   ios. Record the issuance in drm_license_audit.
+    //   multi-DRM vendor. Pick the DRM system from request.supportedDrm (Widevine on android and
+    //   Chromium/Firefox, FairPlay with the application certificate URL on ios and Safari, PlayReady
+    //   on Edge); for premium content with no usable system, throw 403 CONTENT_NOT_PLAYABLE. Return
+    //   the token as vendor-specific licenseRequestHeaders and record the issuance in
+    //   drm_license_audit.
     return Promise.reject(new AppException('PROVIDER_NOT_CONFIGURED'));
   }
 }

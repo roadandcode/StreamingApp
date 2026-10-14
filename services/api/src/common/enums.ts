@@ -21,6 +21,9 @@ export const PROCESSING_STATUSES = processingStatusEnum.enumValues;
 export const PLATFORMS = platformEnum.enumValues;
 export const BILLING_PROVIDERS = billingProviderEnum.enumValues;
 export const BILLING_PERIODS = billingPeriodEnum.enumValues;
+/** DRM systems a client can report in `supportedDrm` and the API can authorize. */
+export const DRM_SYSTEMS = ['widevine', 'fairplay', 'playready'] as const;
+export type DrmSystem = (typeof DRM_SYSTEMS)[number];
 /** `none` is a view value for users who never subscribed; it is never stored. */
 export const SUBSCRIPTION_STATUSES = ['none', ...subscriptionStatusEnum.enumValues] as const;
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
