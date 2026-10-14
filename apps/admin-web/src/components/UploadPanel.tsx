@@ -22,7 +22,11 @@ type Phase =
 
 class UploadError extends Error {}
 
-/** Sends the file straight from the browser to the signed upload URL, reporting progress. */
+/**
+ * Sends the file straight from the browser to the signed upload URL, reporting progress. The
+ * request carries exactly the headers the API returned (possibly none): a signed URL can reject
+ * anything else.
+ */
 function sendFile(
   session: UploadSession,
   file: File,
@@ -38,11 +42,14 @@ function sendFile(
     for (const [name, value] of Object.entries(session.headers ?? {})) {
       xhr.setRequestHeader(name, value);
     }
+    // An untyped view of the file, so the browser does not add a Content-Type of its own.
+    const body = file.slice(0, file.size, "");
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress(event.loaded, event.total);
     };
     xhr.onload = () => {
       xhrRef.current = null;
+      // The contract's upload answers 204; other 2xx codes (as object storage uses) also mean success.
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else if (xhr.status === 401 || xhr.status === 403) {
@@ -59,7 +66,7 @@ function sendFile(
       xhrRef.current = null;
       reject(new UploadError("Upload cancelled."));
     };
-    xhr.send(file);
+    xhr.send(body);
   });
 }
 
