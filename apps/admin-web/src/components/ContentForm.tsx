@@ -43,11 +43,22 @@ export function ContentForm({ mode, action, initialValues, kindOptions, parent, 
       </p>
     ) : null;
 
+  // Errors for fields this form does not show as inputs go into the summary at the top.
+  const hiddenFields: ContentField[] = [
+    ...(kindOptions.length > 1 ? [] : (["kind"] as const)),
+    ...(parent ? [] : (["parentId"] as const)),
+    ...(isLesson ? [] : (["position"] as const)),
+  ];
+  const hiddenErrors = hiddenFields.map(errorFor).filter((message): message is string => Boolean(message));
+
   return (
     <form action={formAction} noValidate aria-label={mode === "create" ? "Create content" : "Edit content"}>
-      {state.status === "error" && state.formError ? (
+      {state.status === "error" && (state.formError || hiddenErrors.length > 0) ? (
         <div className="alert alert-error" role="alert">
-          <p>{state.formError}</p>
+          {state.formError ? <p>{state.formError}</p> : null}
+          {hiddenErrors.map((message) => (
+            <p key={message}>{message}</p>
+          ))}
         </div>
       ) : null}
       {state.status === "saved" ? (

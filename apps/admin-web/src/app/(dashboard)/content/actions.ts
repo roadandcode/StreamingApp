@@ -16,8 +16,8 @@ import type { AdminContent, UploadSession } from "@/lib/api/types";
 import {
   buildCreateRequest,
   buildUpdateRequest,
-  fieldFromApiMessage,
   hasErrors,
+  mapApiFieldErrors,
   readContentValues,
   type ContentFormState,
   type ContentFormValues,
@@ -27,14 +27,17 @@ import { requireAdminSession } from "@/lib/session/server";
 
 function apiErrorState(error: unknown, values: ContentFormValues): ContentFormState {
   const failure = actionFailure(error);
-  const state: ContentFormState = { status: "error", values, fieldErrors: {}, formError: failure.error };
-  if (isApiError(error) && error.code === "VALIDATION_FAILED") {
-    const field = fieldFromApiMessage(error.message);
-    if (field) {
-      state.fieldErrors[field] = error.message;
-    }
+  if (isApiError(error) && error.code === "VALIDATION_FAILED" && error.fieldErrors.length > 0) {
+    const { fieldErrors, other } = mapApiFieldErrors(error.fieldErrors);
+    return {
+      status: "error",
+      values,
+      fieldErrors,
+      formError:
+        other.length > 0 ? `The API rejected the request: ${other.join("; ")}` : "Fix the highlighted fields.",
+    };
   }
-  return state;
+  return { status: "error", values, fieldErrors: {}, formError: failure.error };
 }
 
 export async function createContentAction(

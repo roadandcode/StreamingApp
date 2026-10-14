@@ -1,3 +1,4 @@
+import type { FieldError } from "./api/types";
 import {
   ACCESS_TIERS,
   CONTENT_KINDS,
@@ -256,8 +257,26 @@ export function buildUpdateRequest(
   return { body, errors };
 }
 
-/** Best-effort mapping of an API validation message onto the field it mentions. */
-export function fieldFromApiMessage(message: string): ContentField | undefined {
-  const lower = message.toLowerCase();
-  return CONTENT_FIELDS.find((field) => new RegExp(`\\b${field.toLowerCase()}\\b`).test(lower));
+/**
+ * Places the API's VALIDATION_FAILED field errors on the form inputs. A path such as "regions.0"
+ * belongs to the "regions" input; errors for fields the form does not have are returned separately.
+ */
+export function mapApiFieldErrors(errors: readonly FieldError[]): { fieldErrors: FieldErrors; other: string[] } {
+  const fieldErrors: FieldErrors = {};
+  const other: string[] = [];
+  for (const error of errors) {
+    const root = error.field.split(/[.[]/, 1)[0] ?? "";
+    const field = CONTENT_FIELDS.find((candidate) => candidate === root);
+    if (!field) {
+      other.push(error.field ? `${error.field}: ${error.message}` : error.message);
+      continue;
+    }
+    const existing = fieldErrors[field];
+    if (existing === undefined) {
+      fieldErrors[field] = error.message;
+    } else if (!existing.includes(error.message)) {
+      fieldErrors[field] = `${existing} ${error.message}`;
+    }
+  }
+  return { fieldErrors, other };
 }

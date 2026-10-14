@@ -51,6 +51,15 @@ export async function loginAction(_previous: LoginState, formData: FormData): Pr
   try {
     result = await loginWithPassword({ email, password });
   } catch (error) {
+    if (isApiError(error) && error.code === "VALIDATION_FAILED" && error.fieldErrors.length > 0) {
+      const apiFieldErrors: LoginState["fieldErrors"] = {};
+      for (const { field, message } of error.fieldErrors) {
+        if (field === "email" || field === "password") apiFieldErrors[field] ??= message;
+      }
+      if (apiFieldErrors.email || apiFieldErrors.password) {
+        return { email, fieldErrors: apiFieldErrors };
+      }
+    }
     return { email, error: loginErrorMessage(error) };
   }
 

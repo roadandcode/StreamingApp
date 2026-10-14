@@ -1,4 +1,4 @@
-import type { ApiErrorCode } from "./types";
+import type { ApiErrorCode, FieldError } from "./types";
 
 /** Codes the dashboard produces itself when there is no usable API error body. */
 export type ClientErrorCode = "NETWORK_ERROR" | "UNEXPECTED_RESPONSE";
@@ -12,12 +12,15 @@ export type ErrorCode = ApiErrorCode | ClientErrorCode;
 export class ApiError extends Error {
   readonly code: ErrorCode;
   readonly statusCode: number;
+  /** Per-field problems of a 400 VALIDATION_FAILED; empty otherwise. */
+  readonly fieldErrors: readonly FieldError[];
 
-  constructor(code: ErrorCode, statusCode: number, message: string) {
+  constructor(code: ErrorCode, statusCode: number, message: string, fieldErrors: readonly FieldError[] = []) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.statusCode = statusCode;
+    this.fieldErrors = fieldErrors;
   }
 }
 
@@ -27,6 +30,15 @@ export function isApiError(value: unknown): value is ApiError {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function parseFieldErrors(value: unknown): FieldError[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(
+    (item): item is FieldError => isRecord(item) && typeof item.field === "string" && typeof item.message === "string",
+  );
 }
 
 /** Builds an `ApiError` from a non-2xx response, tolerating bodies that are not in the contract format. */
@@ -46,7 +58,7 @@ export async function errorFromResponse(response: Response): Promise<ApiError> {
         ? rawMessage
         : `Request failed with status ${response.status}.`;
     const statusCode = typeof body.statusCode === "number" ? body.statusCode : response.status;
-    return new ApiError(body.code as ErrorCode, statusCode, message);
+    return new ApiError(body.code as ErrorCode, statusCode, message, parseFieldErrors(body.errors));
   }
 
   return new ApiError(
