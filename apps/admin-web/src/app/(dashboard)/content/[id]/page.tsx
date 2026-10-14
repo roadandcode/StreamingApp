@@ -165,6 +165,16 @@ export default async function ContentDetailPage({ params }: { params: Promise<{ 
               <dd className="mono">{content.asset.id}</dd>
             </>
           ) : null}
+          <dt>Thumbnail</dt>
+          <dd>
+            {content.thumbnailUrl && /^https?:\/\//i.test(content.thumbnailUrl) ? (
+              <a href={content.thumbnailUrl} target="_blank" rel="noopener noreferrer">
+                Open image
+              </a>
+            ) : (
+              (content.thumbnailUrl ?? "—")
+            )}
+          </dd>
           <dt>Duration</dt>
           <dd>{formatDuration(content.durationSeconds)}</dd>
           <dt>Created</dt>

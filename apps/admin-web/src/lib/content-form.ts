@@ -21,6 +21,7 @@ export const CONTENT_FIELDS = [
   "accessTier",
   "defaultLanguage",
   "ageRating",
+  "thumbnailUrl",
   "regions",
   "parentId",
   "position",
@@ -43,6 +44,7 @@ export interface ContentFormState {
 export const TITLE_MAX_LENGTH = 200;
 export const DESCRIPTION_MAX_LENGTH = 5000;
 export const AGE_RATING_MAX_LENGTH = 20;
+export const THUMBNAIL_URL_MAX_LENGTH = 2048;
 
 export const LANGUAGE_SUGGESTIONS: { code: string; label: string }[] = [
   { code: "hi", label: "Hindi" },
@@ -74,6 +76,7 @@ export function emptyContentValues(overrides: Partial<ContentFormValues> = {}): 
     accessTier: "premium",
     defaultLanguage: "hi",
     ageRating: "",
+    thumbnailUrl: "",
     regions: "IN",
     parentId: "",
     position: "",
@@ -89,6 +92,7 @@ export function contentToValues(content: AdminContent): ContentFormValues {
     accessTier: content.accessTier,
     defaultLanguage: content.defaultLanguage,
     ageRating: content.ageRating ?? "",
+    thumbnailUrl: content.thumbnailUrl ?? "",
     regions: content.regions.join(", "),
     parentId: content.parentId ?? "",
     position: String(content.position),
@@ -119,9 +123,19 @@ interface ValidatedFields {
   accessTier: AccessTier;
   defaultLanguage: string;
   ageRating: string | null;
+  thumbnailUrl: string | null;
   regions: string[];
   parentId: string | null;
   position: number | null;
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") && url.hostname.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function validate(values: ContentFormValues): { fields: ValidatedFields; errors: FieldErrors } {
@@ -159,6 +173,13 @@ function validate(values: ContentFormValues): { fields: ValidatedFields; errors:
   const ageRating = values.ageRating.trim();
   if (ageRating.length > AGE_RATING_MAX_LENGTH) {
     errors.ageRating = `Keep the age rating under ${AGE_RATING_MAX_LENGTH} characters.`;
+  }
+
+  const thumbnailUrl = values.thumbnailUrl.trim();
+  if (thumbnailUrl.length > THUMBNAIL_URL_MAX_LENGTH) {
+    errors.thumbnailUrl = `Keep the thumbnail URL under ${THUMBNAIL_URL_MAX_LENGTH} characters.`;
+  } else if (thumbnailUrl.length > 0 && !isHttpUrl(thumbnailUrl)) {
+    errors.thumbnailUrl = "Enter a full image URL starting with https://.";
   }
 
   const regions = parseRegions(values.regions);
@@ -200,6 +221,7 @@ function validate(values: ContentFormValues): { fields: ValidatedFields; errors:
       accessTier,
       defaultLanguage,
       ageRating: ageRating.length > 0 ? ageRating : null,
+      thumbnailUrl: thumbnailUrl.length > 0 ? thumbnailUrl : null,
       regions,
       parentId: parentId.length > 0 ? parentId : null,
       position,
@@ -225,6 +247,7 @@ export function buildCreateRequest(values: ContentFormValues): { body?: CreateCo
     regions: fields.regions,
   };
   if (fields.ageRating !== null) body.ageRating = fields.ageRating;
+  if (fields.thumbnailUrl !== null) body.thumbnailUrl = fields.thumbnailUrl;
   if (fields.kind === "lesson" && fields.parentId !== null) body.parentId = fields.parentId;
   if (fields.kind === "lesson" && fields.position !== null) body.position = fields.position;
   return { body, errors };
@@ -250,6 +273,7 @@ export function buildUpdateRequest(
   if (fields.accessTier !== current.accessTier) body.accessTier = fields.accessTier;
   if (fields.defaultLanguage !== current.defaultLanguage) body.defaultLanguage = fields.defaultLanguage;
   if (fields.ageRating !== current.ageRating) body.ageRating = fields.ageRating;
+  if (fields.thumbnailUrl !== current.thumbnailUrl) body.thumbnailUrl = fields.thumbnailUrl;
   if (fields.regions.join(",") !== current.regions.join(",")) body.regions = fields.regions;
   if (current.kind === "lesson" && fields.position !== null && fields.position !== current.position) {
     body.position = fields.position;

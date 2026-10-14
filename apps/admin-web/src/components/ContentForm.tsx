@@ -6,6 +6,7 @@ import {
   AGE_RATING_SUGGESTIONS,
   DESCRIPTION_MAX_LENGTH,
   LANGUAGE_SUGGESTIONS,
+  THUMBNAIL_URL_MAX_LENGTH,
   TITLE_MAX_LENGTH,
   type ContentField,
   type ContentFormState,
@@ -121,6 +122,27 @@ export function ContentForm({ mode, action, initialValues, kindOptions, parent, 
           aria-describedby={describedBy("description")}
         />
         {fieldError("description")}
+      </div>
+
+      <div className="field">
+        <label htmlFor="thumbnailUrl">
+          Thumbnail URL <span className="optional">(optional)</span>
+        </label>
+        <input
+          id="thumbnailUrl"
+          name="thumbnailUrl"
+          type="url"
+          inputMode="url"
+          maxLength={THUMBNAIL_URL_MAX_LENGTH}
+          placeholder="https://"
+          defaultValue={values.thumbnailUrl}
+          aria-invalid={errorFor("thumbnailUrl") ? true : undefined}
+          aria-describedby={describedBy("thumbnailUrl", "thumbnailUrl-hint")}
+        />
+        <p className="hint" id="thumbnailUrl-hint">
+          Public image shown in the app. Leave empty for none.
+        </p>
+        {fieldError("thumbnailUrl")}
       </div>
 
       <fieldset className="field" style={{ border: 0, padding: 0, margin: "0 0 1rem" }}>
