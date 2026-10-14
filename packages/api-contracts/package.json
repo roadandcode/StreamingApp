@@ -1,0 +1,28 @@
+{
+  "name": "@streamingapp/api-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenAPI document emitted by @streamingapp/api and the TypeScript types generated from it.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./openapi.json": "./openapi.json"
+  },
+  "files": [
+    "openapi.json",
+    "src"
+  ],
+  "scripts": {
+    "generate": "openapi-typescript ./openapi.json --output ./src/schema.d.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3"
+  }
+}
