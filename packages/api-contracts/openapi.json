@@ -614,6 +614,182 @@
         ]
       }
     },
+    "/v1/checkout/razorpay/subscriptions": {
+      "post": {
+        "description": "Open Razorpay Checkout with the returned keyId and razorpaySubscriptionId.",
+        "operationId": "razorpayCheckoutCreate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRazorpaySubscriptionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RazorpayCheckoutSubscriptionDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_FAILED | INVALID_PURCHASE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_INACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SERVICE_UNAVAILABLE | PROVIDER_NOT_CONFIGURED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a Razorpay subscription for a plan (web)",
+        "tags": [
+          "web checkout"
+        ]
+      }
+    },
+    "/v1/checkout/razorpay/verify": {
+      "post": {
+        "description": "Checks razorpay_signature (HMAC-SHA256 of \"payment_id|subscription_id\" with the key secret), then re-reads the subscription from Razorpay.",
+        "operationId": "razorpayCheckoutVerify",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyRazorpayCheckoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionViewDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_FAILED | INVALID_PURCHASE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_INACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "PURCHASE_BELONGS_TO_OTHER_ACCOUNT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SERVICE_UNAVAILABLE | PROVIDER_NOT_CONFIGURED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Apply the result of Razorpay Checkout",
+        "tags": [
+          "web checkout"
+        ]
+      }
+    },
     "/v1/me/devices": {
       "get": {
         "operationId": "devicesList",
@@ -664,7 +840,7 @@
         ]
       },
       "post": {
-        "description": "`201` for a new device, `200` when this installation was already registered.",
+        "description": "`201` for a new device, `200` when this installation was already registered (re-activating it if the user had removed it). `403 DEVICE_REVOKED` if an admin blocked it.",
         "operationId": "devicesRegister",
         "parameters": [],
         "requestBody": {
@@ -752,6 +928,7 @@
     },
     "/v1/me/devices/{id}": {
       "delete": {
+        "description": "The device can be registered again later, subject to the device limit.",
         "operationId": "devicesRevoke",
         "parameters": [
           {
@@ -765,7 +942,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Device revoked."
+            "description": "Device removed."
           },
           "400": {
             "description": "VALIDATION_FAILED",
@@ -813,7 +990,7 @@
             "bearer": []
           }
         ],
-        "summary": "Revoke a device and end its playback sessions",
+        "summary": "Remove a device and end its playback sessions",
         "tags": [
           "devices"
         ]
@@ -1177,6 +1354,76 @@
         ]
       }
     },
+    "/v1/webhooks/razorpay": {
+      "post": {
+        "description": "X-Razorpay-Signature is the hex HMAC-SHA256 of the raw body with RAZORPAY_WEBHOOK_SECRET; the event id comes from X-Razorpay-Event-Id. Returns 503 when Razorpay is not configured.",
+        "operationId": "storeWebhooksRazorpay",
+        "parameters": [
+          {
+            "name": "X-Razorpay-Event-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Razorpay-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookAckDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "INVALID_SIGNATURE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PROVIDER_NOT_CONFIGURED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Razorpay webhooks (web subscriptions)",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
     "/v1/webhooks/fake": {
       "post": {
         "description": "Only mounted when BILLING_MODE=fake and NODE_ENV is not production. `X-Fake-Signature` is the hex HMAC-SHA256 of the raw body with FAKE_WEBHOOK_SECRET.",
@@ -1241,6 +1488,7 @@
     },
     "/v1/admin/content": {
       "get": {
+        "description": "Without parentId: top-level items (courses and standalone videos), newest updatedAt first. With parentId: its children by position.",
         "operationId": "adminContentList",
         "parameters": [
           {
@@ -1285,7 +1533,7 @@
             "name": "parentId",
             "required": false,
             "in": "query",
-            "description": "Only children of this course",
+            "description": "Children of this item, by position. Without it, top-level items (courses and standalone videos), newest updatedAt first.",
             "schema": {
               "format": "uuid",
               "type": "string"
@@ -1486,6 +1734,7 @@
         ]
       },
       "patch": {
+        "description": "kind and parentId cannot change; null clears ageRating and thumbnailUrl.",
         "operationId": "adminContentUpdate",
         "parameters": [
           {
@@ -1564,7 +1813,7 @@
             "bearer": []
           }
         ],
-        "summary": "Update any subset of the create fields",
+        "summary": "Update content",
         "tags": [
           "admin: content"
         ]
@@ -1572,6 +1821,7 @@
     },
     "/v1/admin/content/{id}/upload-session": {
       "post": {
+        "description": "PUT the file to uploadUrl with exactly the returned headers (they may be empty); a successful upload answers 204. Uploading again replaces the asset; playback is refused until it is ready. 400 VALIDATION_FAILED for a course.",
         "operationId": "adminContentUploadSession",
         "parameters": [
           {
@@ -1650,7 +1900,7 @@
             "bearer": []
           }
         ],
-        "summary": "Create a video asset and a short-lived upload URL (PUT the file to it)",
+        "summary": "Create (or replace) the video asset and a short-lived upload URL",
         "tags": [
           "admin: content"
         ]
@@ -2064,6 +2314,7 @@
     },
     "/v1/admin/devices/{id}/revoke": {
       "post": {
+        "description": "Registering it again returns 403 DEVICE_REVOKED.",
         "operationId": "adminUsersRevokeDevice",
         "parameters": [
           {
@@ -2125,7 +2376,7 @@
             "bearer": []
           }
         ],
-        "summary": "Revoke a device and end its playback sessions",
+        "summary": "Block a device permanently and end its playback sessions",
         "tags": [
           "admin: users"
         ]
@@ -2402,6 +2653,24 @@
           "SERVICE_UNAVAILABLE"
         ]
       },
+      "FieldErrorDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "example": "regions.0",
+            "description": "Path of the invalid request field"
+          },
+          "message": {
+            "type": "string",
+            "example": "regions.0 must be an ISO-3166 alpha-2 country code"
+          }
+        },
+        "required": [
+          "field",
+          "message"
+        ]
+      },
       "ErrorResponseDto": {
         "type": "object",
         "properties": {
@@ -2420,6 +2689,13 @@
           "message": {
             "type": "string",
             "example": "An active subscription is required to watch this content."
+          },
+          "errors": {
+            "description": "Present on 400 VALIDATION_FAILED: one entry per invalid field.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldErrorDto"
+            }
           }
         },
         "required": [
@@ -2683,6 +2959,7 @@
         "enum": [
           "apple",
           "google",
+          "razorpay",
           "fake"
         ]
       },
@@ -2840,6 +3117,64 @@
           "receipt"
         ]
       },
+      "CreateRazorpaySubscriptionDto": {
+        "type": "object",
+        "properties": {
+          "planCode": {
+            "type": "string",
+            "example": "premium_monthly",
+            "description": "Plan code from GET /v1/plans"
+          }
+        },
+        "required": [
+          "planCode"
+        ]
+      },
+      "RazorpayCheckoutSubscriptionDto": {
+        "type": "object",
+        "properties": {
+          "razorpaySubscriptionId": {
+            "type": "string",
+            "example": "sub_00000000000001",
+            "description": "Pass to Razorpay Checkout as subscription_id"
+          },
+          "keyId": {
+            "type": "string",
+            "description": "Razorpay key id for Checkout (public)"
+          },
+          "planCode": {
+            "type": "string",
+            "example": "premium_monthly"
+          }
+        },
+        "required": [
+          "razorpaySubscriptionId",
+          "keyId",
+          "planCode"
+        ]
+      },
+      "VerifyRazorpayCheckoutDto": {
+        "type": "object",
+        "properties": {
+          "razorpaySubscriptionId": {
+            "type": "string",
+            "description": "razorpay_subscription_id returned by Checkout"
+          },
+          "razorpayPaymentId": {
+            "type": "string",
+            "description": "razorpay_payment_id returned by Checkout"
+          },
+          "razorpaySignature": {
+            "type": "string",
+            "description": "razorpay_signature returned by Checkout"
+          }
+        },
+        "required": [
+          "razorpaySubscriptionId",
+          "razorpayPaymentId",
+          "razorpaySignature"
+        ]
+      },
       "Platform": {
         "type": "string",
         "enum": [
@@ -2920,6 +3255,15 @@
           "name"
         ]
       },
+      "DrmSystem": {
+        "type": "string",
+        "enum": [
+          "widevine",
+          "fairplay",
+          "playready"
+        ],
+        "description": "DRM systems this client can play (browsers: what EME supports; Android: [\"widevine\"])."
+      },
       "CreatePlaybackSessionDto": {
         "type": "object",
         "properties": {
@@ -2931,18 +3275,18 @@
             "type": "string",
             "format": "uuid",
             "description": "A device registered with POST /v1/me/devices"
+          },
+          "supportedDrm": {
+            "type": "array",
+            "description": "DRM systems this client can play (browsers: what EME supports; Android: [\"widevine\"]).",
+            "items": {
+              "$ref": "#/components/schemas/DrmSystem"
+            }
           }
         },
         "required": [
           "contentId",
           "deviceId"
-        ]
-      },
-      "DrmSystem": {
-        "type": "string",
-        "enum": [
-          "widevine",
-          "fairplay"
         ]
       },
       "DrmDto": {
@@ -2963,16 +3307,19 @@
             "nullable": true,
             "description": "FairPlay application certificate"
           },
-          "token": {
-            "type": "string",
-            "description": "Short-lived license token"
+          "licenseRequestHeaders": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Headers to send on every license request, exactly as given (they carry the short-lived license token; names depend on the DRM vendor). Treat the values as secrets."
           }
         },
         "required": [
           "system",
           "licenseUrl",
           "certificateUrl",
-          "token"
+          "licenseRequestHeaders"
         ]
       },
       "PlaybackAuthorizationDto": {
@@ -3300,6 +3647,12 @@
             "maxLength": 20,
             "example": "UA 13+"
           },
+          "thumbnailUrl": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000,
+            "example": "https://cdn.example.com/t.jpg"
+          },
           "parentId": {
             "type": "string",
             "format": "uuid",
@@ -3309,8 +3662,7 @@
           "position": {
             "type": "number",
             "minimum": 0,
-            "default": 0,
-            "description": "Order within the parent course"
+            "description": "0-based order among siblings; omitted puts the item last"
           },
           "regions": {
             "example": [
@@ -3449,13 +3801,6 @@
       "UpdateContentDto": {
         "type": "object",
         "properties": {
-          "kind": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ContentKind"
-              }
-            ]
-          },
           "title": {
             "type": "string",
             "maxLength": 200
@@ -3480,25 +3825,24 @@
             "type": "string",
             "nullable": true,
             "maxLength": 20,
-            "example": "UA 13+"
+            "description": "null clears it"
           },
-          "parentId": {
+          "thumbnailUrl": {
             "type": "string",
-            "format": "uuid",
             "nullable": true,
-            "description": "Parent course. Required for lessons; courses cannot have a parent."
+            "maxLength": 2000,
+            "description": "null clears it"
           },
           "position": {
             "type": "number",
             "minimum": 0,
-            "default": 0,
-            "description": "Order within the parent course"
+            "description": "0-based order among siblings (siblings are not renumbered)"
           },
           "regions": {
             "example": [
               "IN"
             ],
-            "description": "ISO-3166 alpha-2 country codes",
+            "description": "Replaces the regions",
             "type": "array",
             "items": {
               "type": "string"

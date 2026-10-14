@@ -25,3 +25,6 @@ export type AdminContent = Schemas['AdminContentDto'];
 export type AdminContentDetail = Schemas['AdminContentDetailDto'];
 export type UploadSession = Schemas['UploadSessionDto'];
 export type AdminUserDetail = Schemas['AdminUserDetailDto'];
+export type FieldError = Schemas['FieldErrorDto'];
+export type DrmSystem = Schemas['DrmSystem'];
+export type RazorpayCheckoutSubscription = Schemas['RazorpayCheckoutSubscriptionDto'];

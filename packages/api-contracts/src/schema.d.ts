@@ -187,6 +187,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/checkout/razorpay/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a Razorpay subscription for a plan (web)
+         * @description Open Razorpay Checkout with the returned keyId and razorpaySubscriptionId.
+         */
+        post: operations["razorpayCheckoutCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/checkout/razorpay/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply the result of Razorpay Checkout
+         * @description Checks razorpay_signature (HMAC-SHA256 of "payment_id|subscription_id" with the key secret), then re-reads the subscription from Razorpay.
+         */
+        post: operations["razorpayCheckoutVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/devices": {
         parameters: {
             query?: never;
@@ -199,7 +239,7 @@ export interface paths {
         put?: never;
         /**
          * Register this installation as a device
-         * @description `201` for a new device, `200` when this installation was already registered.
+         * @description `201` for a new device, `200` when this installation was already registered (re-activating it if the user had removed it). `403 DEVICE_REVOKED` if an admin blocked it.
          */
         post: operations["devicesRegister"];
         delete?: never;
@@ -218,7 +258,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke a device and end its playback sessions */
+        /**
+         * Remove a device and end its playback sessions
+         * @description The device can be registered again later, subject to the device limit.
+         */
         delete: operations["devicesRevoke"];
         options?: never;
         head?: never;
@@ -316,6 +359,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/webhooks/razorpay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Razorpay webhooks (web subscriptions)
+         * @description X-Razorpay-Signature is the hex HMAC-SHA256 of the raw body with RAZORPAY_WEBHOOK_SECRET; the event id comes from X-Razorpay-Event-Id. Returns 503 when Razorpay is not configured.
+         */
+        post: operations["storeWebhooksRazorpay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/webhooks/fake": {
         parameters: {
             query?: never;
@@ -343,7 +406,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List content in any publication state */
+        /**
+         * List content in any publication state
+         * @description Without parentId: top-level items (courses and standalone videos), newest updatedAt first. With parentId: its children by position.
+         */
         get: operations["adminContentList"];
         put?: never;
         /** Create content (starts as draft) */
@@ -368,7 +434,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update any subset of the create fields */
+        /**
+         * Update content
+         * @description kind and parentId cannot change; null clears ageRating and thumbnailUrl.
+         */
         patch: operations["adminContentUpdate"];
         trace?: never;
     };
@@ -381,7 +450,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a video asset and a short-lived upload URL (PUT the file to it) */
+        /**
+         * Create (or replace) the video asset and a short-lived upload URL
+         * @description PUT the file to uploadUrl with exactly the returned headers (they may be empty); a successful upload answers 204. Uploading again replaces the asset; playback is refused until it is ready. 400 VALIDATION_FAILED for a course.
+         */
         post: operations["adminContentUploadSession"];
         delete?: never;
         options?: never;
@@ -483,7 +555,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke a device and end its playback sessions */
+        /**
+         * Block a device permanently and end its playback sessions
+         * @description Registering it again returns 403 DEVICE_REVOKED.
+         */
         post: operations["adminUsersRevokeDevice"];
         delete?: never;
         options?: never;
@@ -569,6 +644,15 @@ export interface components {
         };
         /** @enum {string} */
         ErrorCode: "VALIDATION_FAILED" | "INVALID_PURCHASE" | "UNAUTHENTICATED" | "INVALID_CREDENTIALS" | "INVALID_REFRESH_TOKEN" | "INVALID_SIGNATURE" | "FORBIDDEN" | "ACCOUNT_INACTIVE" | "ENTITLEMENT_REQUIRED" | "REGION_NOT_ALLOWED" | "CONTENT_NOT_PLAYABLE" | "DEVICE_NOT_REGISTERED" | "DEVICE_REVOKED" | "CONCURRENT_STREAM_LIMIT" | "PLAYBACK_SESSION_ENDED" | "NOT_FOUND" | "EMAIL_TAKEN" | "DEVICE_LIMIT_REACHED" | "PURCHASE_BELONGS_TO_OTHER_ACCOUNT" | "ASSET_NOT_READY" | "RATE_LIMITED" | "INTERNAL_ERROR" | "PROVIDER_NOT_CONFIGURED" | "SERVICE_UNAVAILABLE";
+        FieldErrorDto: {
+            /**
+             * @description Path of the invalid request field
+             * @example regions.0
+             */
+            field: string;
+            /** @example regions.0 must be an ISO-3166 alpha-2 country code */
+            message: string;
+        };
         ErrorResponseDto: {
             /** @example 403 */
             statusCode: number;
@@ -576,6 +660,8 @@ export interface components {
             code: components["schemas"]["ErrorCode"];
             /** @example An active subscription is required to watch this content. */
             message: string;
+            /** @description Present on 400 VALIDATION_FAILED: one entry per invalid field. */
+            errors?: components["schemas"]["FieldErrorDto"][];
         };
         LoginDto: {
             /** Format: email */
@@ -655,7 +741,7 @@ export interface components {
          */
         BillingPeriod: "P1M" | "P1Y";
         /** @enum {string} */
-        BillingProvider: "apple" | "google" | "fake";
+        BillingProvider: "apple" | "google" | "razorpay" | "fake";
         StoreProductDto: {
             provider: components["schemas"]["BillingProvider"];
             /** @example com.roadandcode.streamingapp.premium.monthly */
@@ -692,6 +778,32 @@ export interface components {
             /** @description Google Play purchaseToken, Apple signedTransactionInfo JWS, or for provider "fake" the original transaction id. */
             receipt: string;
         };
+        CreateRazorpaySubscriptionDto: {
+            /**
+             * @description Plan code from GET /v1/plans
+             * @example premium_monthly
+             */
+            planCode: string;
+        };
+        RazorpayCheckoutSubscriptionDto: {
+            /**
+             * @description Pass to Razorpay Checkout as subscription_id
+             * @example sub_00000000000001
+             */
+            razorpaySubscriptionId: string;
+            /** @description Razorpay key id for Checkout (public) */
+            keyId: string;
+            /** @example premium_monthly */
+            planCode: string;
+        };
+        VerifyRazorpayCheckoutDto: {
+            /** @description razorpay_subscription_id returned by Checkout */
+            razorpaySubscriptionId: string;
+            /** @description razorpay_payment_id returned by Checkout */
+            razorpayPaymentId: string;
+            /** @description razorpay_signature returned by Checkout */
+            razorpaySignature: string;
+        };
         /** @enum {string} */
         Platform: "android" | "ios" | "web";
         DeviceDto: {
@@ -718,6 +830,11 @@ export interface components {
             /** @example Pixel 8 */
             name: string;
         };
+        /**
+         * @description DRM systems this client can play (browsers: what EME supports; Android: ["widevine"]).
+         * @enum {string}
+         */
+        DrmSystem: "widevine" | "fairplay" | "playready";
         CreatePlaybackSessionDto: {
             /** Format: uuid */
             contentId: string;
@@ -726,16 +843,18 @@ export interface components {
              * @description A device registered with POST /v1/me/devices
              */
             deviceId: string;
+            /** @description DRM systems this client can play (browsers: what EME supports; Android: ["widevine"]). */
+            supportedDrm?: components["schemas"]["DrmSystem"][];
         };
-        /** @enum {string} */
-        DrmSystem: "widevine" | "fairplay";
         DrmDto: {
             system: components["schemas"]["DrmSystem"];
             licenseUrl: string;
             /** @description FairPlay application certificate */
             certificateUrl: string | null;
-            /** @description Short-lived license token */
-            token: string;
+            /** @description Headers to send on every license request, exactly as given (they carry the short-lived license token; names depend on the DRM vendor). Treat the values as secrets. */
+            licenseRequestHeaders: {
+                [key: string]: string;
+            };
         };
         PlaybackAuthorizationDto: {
             /** Format: uuid */
@@ -839,16 +958,15 @@ export interface components {
             defaultLanguage: string;
             /** @example UA 13+ */
             ageRating?: string | null;
+            /** @example https://cdn.example.com/t.jpg */
+            thumbnailUrl?: string | null;
             /**
              * Format: uuid
              * @description Parent course. Required for lessons; courses cannot have a parent.
              */
             parentId?: string | null;
-            /**
-             * @description Order within the parent course
-             * @default 0
-             */
-            position: number;
+            /** @description 0-based order among siblings; omitted puts the item last */
+            position?: number;
             /**
              * @description ISO-3166 alpha-2 country codes
              * @example [
@@ -892,7 +1010,6 @@ export interface components {
             children: components["schemas"]["AdminContentDto"][];
         };
         UpdateContentDto: {
-            kind?: components["schemas"]["ContentKind"];
             title?: string;
             description?: string;
             accessTier?: components["schemas"]["AccessTier"];
@@ -901,20 +1018,14 @@ export interface components {
              * @example hi
              */
             defaultLanguage?: string;
-            /** @example UA 13+ */
+            /** @description null clears it */
             ageRating?: string | null;
+            /** @description null clears it */
+            thumbnailUrl?: string | null;
+            /** @description 0-based order among siblings (siblings are not renumbered) */
+            position?: number;
             /**
-             * Format: uuid
-             * @description Parent course. Required for lessons; courses cannot have a parent.
-             */
-            parentId?: string | null;
-            /**
-             * @description Order within the parent course
-             * @default 0
-             */
-            position: number;
-            /**
-             * @description ISO-3166 alpha-2 country codes
+             * @description Replaces the regions
              * @example [
              *       "IN"
              *     ]
@@ -1450,6 +1561,142 @@ export interface operations {
             };
         };
     };
+    razorpayCheckoutCreate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRazorpaySubscriptionDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RazorpayCheckoutSubscriptionDto"];
+                };
+            };
+            /** @description VALIDATION_FAILED | INVALID_PURCHASE */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description UNAUTHENTICATED */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description ACCOUNT_INACTIVE */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description SERVICE_UNAVAILABLE | PROVIDER_NOT_CONFIGURED */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    razorpayCheckoutVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyRazorpayCheckoutDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionViewDto"];
+                };
+            };
+            /** @description VALIDATION_FAILED | INVALID_PURCHASE */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description UNAUTHENTICATED */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description ACCOUNT_INACTIVE */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description PURCHASE_BELONGS_TO_OTHER_ACCOUNT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description SERVICE_UNAVAILABLE | PROVIDER_NOT_CONFIGURED */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
     devicesList: {
         parameters: {
             query?: never;
@@ -1567,7 +1814,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Device revoked. */
+            /** @description Device removed. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -1898,6 +2145,55 @@ export interface operations {
             };
         };
     };
+    storeWebhooksRazorpay: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Razorpay-Event-Id": string;
+                "X-Razorpay-Signature": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAckDto"];
+                };
+            };
+            /** @description VALIDATION_FAILED */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description INVALID_SIGNATURE */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description PROVIDER_NOT_CONFIGURED */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
     fakeWebhooksFake: {
         parameters: {
             query?: never;
@@ -1949,7 +2245,7 @@ export interface operations {
                 pageSize?: number;
                 kind?: components["schemas"]["ContentKind"];
                 status?: components["schemas"]["PublicationStatus"];
-                /** @description Only children of this course */
+                /** @description Children of this item, by position. Without it, top-level items (courses and standalone videos), newest updatedAt first. */
                 parentId?: string;
             };
             header?: never;
