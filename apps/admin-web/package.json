@@ -1,0 +1,32 @@
+{
+  "name": "@streamingapp/admin-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "eslint .",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:mock": "E2E_USE_MOCK=1 playwright test",
+    "mock-api": "node e2e/mock-api.mjs"
+  },
+  "dependencies": {
+    "iron-session": "^9.0.1",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^10.12.0",
+    "eslint-config-next": "16.4.0",
+    "typescript": "~5.9.3"
+  }
+}
