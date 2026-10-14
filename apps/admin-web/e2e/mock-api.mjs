@@ -1,27 +1,31 @@
 #!/usr/bin/env node
 /**
  * In-memory stand-in for the v1 API (docs/architecture/api-contract.md), covering only the
- * endpoints the admin dashboard and its smoke test use. It follows the contract's shapes, error
- * format and auth rules (bearer access tokens, rotating refresh tokens with reuse detection,
- * admin-only /v1/admin/*), plus the fake media upload URL.
+ * endpoints the admin dashboard and its e2e tests use. It follows the contract's shapes, error
+ * format (including field errors on 400 VALIDATION_FAILED), auth rules (bearer access tokens,
+ * rotating refresh tokens with reuse detection, admin-only /v1/admin/*), content rules and the
+ * fake media upload URL.
  *
  *   node e2e/mock-api.mjs            # http://localhost:3100
  *
  * Environment (all optional):
  *   MOCK_API_PORT                   default 3100
  *   MOCK_PUBLIC_BASE_URL            base of the fake upload URLs, default http://localhost:<port>
- *   MOCK_CORS_ORIGINS               comma-separated, default http://localhost:3001
+ *   MOCK_CORS_ORIGINS               comma-separated, default http://localhost:3001,http://localhost:3002
  *   MOCK_ACCESS_TOKEN_TTL_SECONDS   default 900
  *   MOCK_PROCESSING_DELAY_MS        time between the upload PUT and the asset becoming ready, default 0
+ *   MOCK_UPLOAD_HEADERS             JSON object returned as upload-session `headers`, default {}
  *   MOCK_QUIET=1                    no request log
  *   E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD / E2E_VIEWER_EMAIL / E2E_VIEWER_PASSWORD  seeded accounts
+ *
+ * Routes under /__mock/* are test controls, not part of the API; a real API answers 404 there.
  */
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 3100);
 const PUBLIC_BASE_URL = (process.env.MOCK_PUBLIC_BASE_URL ?? `http://localhost:${PORT}`).replace(/\/+$/, "");
-const CORS_ORIGINS = (process.env.MOCK_CORS_ORIGINS ?? "http://localhost:3001")
+const CORS_ORIGINS = (process.env.MOCK_CORS_ORIGINS ?? "http://localhost:3001,http://localhost:3002")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -38,23 +42,37 @@ const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "admin-password-123";
 const VIEWER_EMAIL = process.env.E2E_VIEWER_EMAIL ?? "viewer@example.test";
 const VIEWER_PASSWORD = process.env.E2E_VIEWER_PASSWORD ?? "viewer-password-123";
 
+const KINDS = ["course", "lesson", "video"];
+const ACCESS_TIERS = ["free", "premium"];
+const STATUSES = ["draft", "published", "unpublished"];
+const PLATFORMS = ["android", "ios", "web"];
+
 // ---------------------------------------------------------------------------------------------
 // Errors and validation
 // ---------------------------------------------------------------------------------------------
 
 class HttpError extends Error {
-  constructor(statusCode, code, message) {
+  constructor(statusCode, code, message, errors) {
     super(message);
     this.statusCode = statusCode;
     this.code = code;
+    this.errors = errors;
   }
 }
 
 const fail = (statusCode, code, message) => {
   throw new HttpError(statusCode, code, message);
 };
-const invalid = (message) => fail(400, "VALIDATION_FAILED", message);
 const notFound = (what = "Resource") => fail(404, "NOT_FOUND", `${what} not found.`);
+
+function validationError(errors) {
+  return new HttpError(400, "VALIDATION_FAILED", errors.map((error) => error.message).join("; "), errors);
+}
+
+/** Fails with a single field error. */
+const invalid = (field, message) => {
+  throw validationError([{ field, message }]);
+};
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LANGUAGE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
@@ -62,26 +80,54 @@ const REGION = /^[A-Z]{2}$/;
 
 const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 
-function rejectUnknown(record, allowed, where = "body") {
-  for (const key of Object.keys(record)) {
-    if (!allowed.includes(key)) invalid(`property ${key} should not exist in the ${where}`);
+/** Collects every field error of a request, like the API's validation, then fails with all of them. */
+class Checks {
+  constructor() {
+    this.errors = [];
+  }
+
+  add(field, message) {
+    this.errors.push({ field, message });
+  }
+
+  done() {
+    if (this.errors.length > 0) throw validationError(this.errors);
+  }
+
+  unknown(record, allowed) {
+    for (const key of Object.keys(record)) {
+      if (!allowed.includes(key)) this.add(key, `property ${key} should not exist`);
+    }
+  }
+
+  string(record, key, { max = 10_000, optional = false } = {}) {
+    const value = record[key];
+    if (value === undefined && optional) return undefined;
+    if (typeof value !== "string") return this.add(key, `${key} must be a string`);
+    if (value.trim().length === 0) return this.add(key, `${key} should not be empty`);
+    if (value.length > max) return this.add(key, `${key} must be shorter than or equal to ${max} characters`);
+    return value;
+  }
+
+  oneOf(record, key, values, { optional = false } = {}) {
+    const value = record[key];
+    if (value === undefined && optional) return undefined;
+    if (!values.includes(value)) return this.add(key, `${key} must be one of the following values: ${values.join(", ")}`);
+    return value;
   }
 }
 
-function requireString(body, key, { min = 1, max = 10_000, optional = false } = {}) {
-  const value = body[key];
-  if (value === undefined && optional) return undefined;
-  if (typeof value !== "string") invalid(`${key} must be a string`);
-  if (value.trim().length < min) invalid(`${key} should not be empty`);
-  if (value.length > max) invalid(`${key} must be shorter than or equal to ${max} characters`);
-  return value;
+function checkBody(body) {
+  if (!isObject(body)) invalid("", "body must be a JSON object");
+  return new Checks();
 }
 
-function requireEnum(body, key, values, { optional = false } = {}) {
-  const value = body[key];
-  if (value === undefined && optional) return undefined;
-  if (!values.includes(value)) invalid(`${key} must be one of the following values: ${values.join(", ")}`);
-  return value;
+function checkQuery(query, allowed) {
+  const checks = new Checks();
+  for (const key of query.keys()) {
+    if (!allowed.includes(key)) checks.add(key, `property ${key} should not exist`);
+  }
+  return checks;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -97,19 +143,33 @@ const accessTokens = new Map(); // token -> { userId, expiresAt }
 const refreshTokens = new Map(); // token -> { userId, familyId, expiresAt, used }
 const revokedFamilies = new Set();
 const content = new Map(); // id -> AdminContent (+ providerAssetId)
-const uploads = new Map(); // providerAssetId -> { contentId, assetId }
-const devices = new Map(); // id -> Device & { userId }
+const uploads = new Map(); // providerAssetId -> { contentId, assetId, headers }
+const devices = new Map(); // id -> Device & { userId, blocked }
 const playbackSessions = new Map(); // id -> { ..., userId, endedAt }
 const auditLog = [];
 
-function addUser({ email, password, role, displayName, subscription }) {
+// Test-control state.
+let uploadHeaders = parseUploadHeaders(process.env.MOCK_UPLOAD_HEADERS);
+let lastUpload = null;
+const scriptedFailures = [];
+
+function parseUploadHeaders(raw) {
+  if (!raw) return {};
+  const parsed = JSON.parse(raw);
+  if (!isObject(parsed) || Object.values(parsed).some((value) => typeof value !== "string")) {
+    throw new Error("MOCK_UPLOAD_HEADERS must be a JSON object of strings.");
+  }
+  return parsed;
+}
+
+function addUser({ email, password, role, displayName, subscription, daysAgo }) {
   const user = {
     id: randomUUID(),
     email,
     displayName,
     role,
     accountStatus: "active",
-    createdAt: ago(60 * 24 * 40),
+    createdAt: ago(60 * 24 * daysAgo),
   };
   users.set(user.id, {
     user,
@@ -152,12 +212,13 @@ function readyAsset() {
 }
 
 function seed() {
-  addUser({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, role: "admin", displayName: "Admin" });
+  addUser({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, role: "admin", displayName: "Admin", daysAgo: 40 });
   const viewer = addUser({
     email: VIEWER_EMAIL,
     password: VIEWER_PASSWORD,
     role: "viewer",
     displayName: "Priya Sharma",
+    daysAgo: 30,
     subscription: {
       status: "active",
       hasAccess: true,
@@ -168,7 +229,13 @@ function seed() {
       autoRenewEnabled: true,
     },
   });
-  addUser({ email: "rahul.verma@example.test", password: "unused-password-1", role: "viewer", displayName: "Rahul Verma" });
+  addUser({
+    email: "rahul.verma@example.test",
+    password: "unused-password-1",
+    role: "viewer",
+    displayName: "Rahul Verma",
+    daysAgo: 10,
+  });
 
   const course = addContent({
     kind: "course",
@@ -177,6 +244,7 @@ function seed() {
     accessTier: "premium",
     defaultLanguage: "hi",
     ageRating: "U",
+    thumbnailUrl: "https://images.example.test/hindi-for-beginners.jpg",
     publicationStatus: "published",
   });
   const lessonOne = addContent({
@@ -186,7 +254,7 @@ function seed() {
     accessTier: "premium",
     defaultLanguage: "hi",
     parentId: course.id,
-    position: 1,
+    position: 0,
     durationSeconds: 512,
     asset: readyAsset(),
     publicationStatus: "published",
@@ -198,7 +266,7 @@ function seed() {
     accessTier: "premium",
     defaultLanguage: "hi",
     parentId: course.id,
-    position: 2,
+    position: 1,
     durationSeconds: 634,
     asset: readyAsset(),
     publicationStatus: "published",
@@ -222,6 +290,7 @@ function seed() {
     lastSeenAt: ago(5),
     createdAt: ago(60 * 24 * 30),
     revokedAt: null,
+    blocked: false,
   };
   const oldPhone = {
     id: randomUUID(),
@@ -232,6 +301,7 @@ function seed() {
     lastSeenAt: ago(60 * 24 * 60),
     createdAt: ago(60 * 24 * 300),
     revokedAt: ago(60 * 24 * 59),
+    blocked: true,
   };
   devices.set(phone.id, phone);
   devices.set(oldPhone.id, oldPhone);
@@ -271,9 +341,13 @@ function issueTokens(userId, familyId = randomUUID()) {
   };
 }
 
-function revokeFamiliesOf(userId) {
+/** Revokes every login session of a user; their access tokens stop working immediately. */
+function revokeAllSessionsOf(userId) {
   for (const record of refreshTokens.values()) {
     if (record.userId === userId) revokedFamilies.add(record.familyId);
+  }
+  for (const [accessToken, record] of accessTokens) {
+    if (record.userId === userId) accessTokens.delete(accessToken);
   }
 }
 
@@ -308,10 +382,13 @@ function publicContent(item) {
   return { ...rest, regions: [...rest.regions], asset: rest.asset ? { ...rest.asset } : null };
 }
 
+/** Siblings by 0-based position; ties sort by createdAt. */
+const byPosition = (a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt);
+
 function childrenOf(id) {
   return [...content.values()]
     .filter((item) => item.parentId === id)
-    .sort((a, b) => a.position - b.position)
+    .sort(byPosition)
     .map(publicContent);
 }
 
@@ -321,59 +398,104 @@ function findContent(id) {
   return item;
 }
 
-const CONTENT_FIELDS = [
+const CREATE_FIELDS = [
   "kind",
   "title",
   "description",
   "accessTier",
   "defaultLanguage",
   "ageRating",
+  "thumbnailUrl",
   "parentId",
   "position",
   "regions",
 ];
+const PATCH_FIELDS = [
+  "title",
+  "description",
+  "accessTier",
+  "defaultLanguage",
+  "ageRating",
+  "thumbnailUrl",
+  "position",
+  "regions",
+];
 
-function validateContentFields(body, { partial }) {
-  if (!isObject(body)) invalid("body must be an object");
-  rejectUnknown(body, CONTENT_FIELDS);
+function isHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function validateContent(body, { partial }) {
+  const checks = checkBody(body);
+  if (partial) {
+    for (const key of ["kind", "parentId"]) {
+      if (key in body) checks.add(key, `${key} cannot be changed`);
+    }
+    checks.unknown(body, [...PATCH_FIELDS, "kind", "parentId"]);
+  } else {
+    checks.unknown(body, CREATE_FIELDS);
+  }
+
   const out = {};
-  const opt = { optional: partial };
-  const kind = requireEnum(body, "kind", ["course", "lesson", "video"], opt);
-  if (kind !== undefined) out.kind = kind;
-  const title = requireString(body, "title", { max: 200, ...opt });
+  const optional = { optional: partial };
+  if (!partial) out.kind = checks.oneOf(body, "kind", KINDS);
+  const title = checks.string(body, "title", { max: 200, ...optional });
   if (title !== undefined) out.title = title.trim();
   if (body.description !== undefined || !partial) {
-    if (typeof body.description !== "string") invalid("description must be a string");
-    out.description = body.description;
+    if (typeof body.description !== "string") checks.add("description", "description must be a string");
+    else out.description = body.description;
   }
-  const accessTier = requireEnum(body, "accessTier", ["free", "premium"], opt);
+  const accessTier = checks.oneOf(body, "accessTier", ACCESS_TIERS, optional);
   if (accessTier !== undefined) out.accessTier = accessTier;
-  const defaultLanguage = requireString(body, "defaultLanguage", { max: 35, ...opt });
+  const defaultLanguage = checks.string(body, "defaultLanguage", { max: 35, ...optional });
   if (defaultLanguage !== undefined) {
-    if (!LANGUAGE.test(defaultLanguage)) invalid("defaultLanguage must be a BCP-47 language tag");
-    out.defaultLanguage = defaultLanguage;
+    if (LANGUAGE.test(defaultLanguage)) out.defaultLanguage = defaultLanguage;
+    else checks.add("defaultLanguage", "defaultLanguage must be a BCP-47 language tag");
   }
   if (body.ageRating !== undefined) {
     if (body.ageRating !== null && (typeof body.ageRating !== "string" || body.ageRating.length > 20)) {
-      invalid("ageRating must be a string of at most 20 characters");
+      checks.add("ageRating", "ageRating must be a string of at most 20 characters");
+    } else {
+      out.ageRating = body.ageRating;
     }
-    out.ageRating = body.ageRating;
   }
-  if (body.parentId !== undefined) {
-    if (typeof body.parentId !== "string" || !UUID.test(body.parentId)) invalid("parentId must be a UUID");
-    out.parentId = body.parentId;
+  if (body.thumbnailUrl !== undefined) {
+    const value = body.thumbnailUrl;
+    if (value !== null && (typeof value !== "string" || value.length > 2048 || !isHttpUrl(value))) {
+      checks.add("thumbnailUrl", "thumbnailUrl must be an http(s) URL of at most 2048 characters");
+    } else {
+      out.thumbnailUrl = value;
+    }
+  }
+  if (!partial && body.parentId !== undefined) {
+    if (typeof body.parentId !== "string" || !UUID.test(body.parentId)) checks.add("parentId", "parentId must be a UUID");
+    else out.parentId = body.parentId;
   }
   if (body.position !== undefined) {
-    if (!Number.isInteger(body.position) || body.position < 0) invalid("position must be a non-negative integer");
-    out.position = body.position;
+    if (!Number.isInteger(body.position) || body.position < 0) {
+      checks.add("position", "position must be a non-negative integer");
+    } else {
+      out.position = body.position;
+    }
   }
   if (body.regions !== undefined || !partial) {
-    if (!Array.isArray(body.regions) || body.regions.length === 0) invalid("regions must contain at least 1 element");
-    for (const region of body.regions) {
-      if (typeof region !== "string" || !REGION.test(region)) invalid("each value in regions must be an ISO-3166 alpha-2 code");
+    if (!Array.isArray(body.regions) || body.regions.length === 0) {
+      checks.add("regions", "regions must contain at least 1 element");
+    } else {
+      body.regions.forEach((region, index) => {
+        if (typeof region !== "string" || !REGION.test(region)) {
+          checks.add(`regions.${index}`, "each value in regions must be an ISO-3166 alpha-2 code");
+        }
+      });
+      out.regions = [...new Set(body.regions)];
     }
-    out.regions = [...new Set(body.regions)];
   }
+  checks.done();
   return out;
 }
 
@@ -392,22 +514,18 @@ function verifyUploadSignature(providerAssetId, exp, sig) {
 // Pagination
 // ---------------------------------------------------------------------------------------------
 
-function pageQuery(query) {
+function pageQuery(query, checks) {
   const page = query.get("page") === null ? 1 : Number(query.get("page"));
   const pageSize = query.get("pageSize") === null ? 20 : Number(query.get("pageSize"));
-  if (!Number.isInteger(page) || page < 1) invalid("page must be a positive integer");
-  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) invalid("pageSize must be between 1 and 100");
+  if (!Number.isInteger(page) || page < 1) checks.add("page", "page must be a positive integer");
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+    checks.add("pageSize", "pageSize must be between 1 and 100");
+  }
   return { page, pageSize };
 }
 
 function paginate(items, { page, pageSize }) {
   return { items: items.slice((page - 1) * pageSize, page * pageSize), page, pageSize, total: items.length };
-}
-
-function rejectUnknownQuery(query, allowed) {
-  for (const key of query.keys()) {
-    if (!allowed.includes(key)) invalid(`property ${key} should not exist in the query`);
-  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -429,20 +547,23 @@ const route = (method, pattern, handler) => {
 route("GET", "/v1/health", () => ({ status: 200, body: { status: "ok", db: "ok" } }));
 
 route("POST", "/v1/auth/login", ({ body }) => {
-  if (!isObject(body)) invalid("body must be an object");
-  rejectUnknown(body, ["email", "password"]);
-  const email = requireString(body, "email").trim().toLowerCase();
-  const password = requireString(body, "password");
-  const entry = [...users.values()].find((candidate) => candidate.user.email.toLowerCase() === email);
+  const checks = checkBody(body);
+  checks.unknown(body, ["email", "password"]);
+  const email = checks.string(body, "email");
+  const password = checks.string(body, "password");
+  checks.done();
+  const needle = email.trim().toLowerCase();
+  const entry = [...users.values()].find((candidate) => candidate.user.email.toLowerCase() === needle);
   if (!entry || entry.password !== password) fail(401, "INVALID_CREDENTIALS", "Wrong email or password.");
   if (entry.user.accountStatus !== "active") fail(403, "ACCOUNT_INACTIVE", "Account suspended or deleted.");
   return { status: 200, body: { user: entry.user, tokens: issueTokens(entry.user.id) } };
 });
 
 route("POST", "/v1/auth/refresh", ({ body }) => {
-  if (!isObject(body)) invalid("body must be an object");
-  rejectUnknown(body, ["refreshToken"]);
-  const presented = requireString(body, "refreshToken");
+  const checks = checkBody(body);
+  checks.unknown(body, ["refreshToken"]);
+  const presented = checks.string(body, "refreshToken");
+  checks.done();
   const record = refreshTokens.get(presented);
   if (!record || record.expiresAt <= Date.now() || revokedFamilies.has(record.familyId)) {
     fail(401, "INVALID_REFRESH_TOKEN", "Refresh token is invalid or expired.");
@@ -455,10 +576,12 @@ route("POST", "/v1/auth/refresh", ({ body }) => {
   return { status: 200, body: { tokens: issueTokens(record.userId, record.familyId) } };
 });
 
+// 204 also for an unknown or already-revoked token.
 route("POST", "/v1/auth/logout", ({ body }) => {
-  if (!isObject(body)) invalid("body must be an object");
-  rejectUnknown(body, ["refreshToken"]);
-  const presented = requireString(body, "refreshToken");
+  const checks = checkBody(body);
+  checks.unknown(body, ["refreshToken"]);
+  const presented = checks.string(body, "refreshToken");
+  checks.done();
   const record = refreshTokens.get(presented);
   if (record) revokedFamilies.add(record.familyId);
   return { status: 204 };
@@ -476,22 +599,30 @@ route("GET", "/v1/me/devices", ({ req }) => {
 
 route("POST", "/v1/me/devices", ({ req, body }) => {
   const user = authenticate(req);
-  if (!isObject(body)) invalid("body must be an object");
-  rejectUnknown(body, ["installationId", "platform", "name"]);
-  const installationId = requireString(body, "installationId");
-  if (!UUID.test(installationId)) invalid("installationId must be a UUID");
-  const platform = requireEnum(body, "platform", ["android", "ios", "web"]);
-  const name = requireString(body, "name", { max: 100 });
+  const checks = checkBody(body);
+  checks.unknown(body, ["installationId", "platform", "name"]);
+  const installationId = checks.string(body, "installationId");
+  if (installationId !== undefined && !UUID.test(installationId)) checks.add("installationId", "installationId must be a UUID");
+  const platform = checks.oneOf(body, "platform", PLATFORMS);
+  const name = checks.string(body, "name", { max: 100 });
+  checks.done();
+
+  const active = [...devices.values()].filter((device) => device.userId === user.id && device.revokedAt === null);
   const existing = [...devices.values()].find(
     (device) => device.userId === user.id && device.installationId === installationId,
   );
   if (existing) {
-    if (existing.revokedAt) fail(403, "DEVICE_REVOKED", "This device was revoked.");
+    if (existing.blocked) fail(403, "DEVICE_REVOKED", "This device was blocked by an administrator.");
+    if (existing.revokedAt !== null) {
+      // Removed by its owner: it may register again, subject to the device limit.
+      if (active.length >= MAX_DEVICES) fail(409, "DEVICE_LIMIT_REACHED", `At most ${MAX_DEVICES} devices can be active.`);
+      existing.revokedAt = null;
+    }
     existing.name = name;
+    existing.platform = platform;
     existing.lastSeenAt = iso(now());
     return { status: 200, body: publicDevice(existing) };
   }
-  const active = [...devices.values()].filter((device) => device.userId === user.id && device.revokedAt === null);
   if (active.length >= MAX_DEVICES) fail(409, "DEVICE_LIMIT_REACHED", `At most ${MAX_DEVICES} devices can be active.`);
   const device = {
     id: randomUUID(),
@@ -502,6 +633,7 @@ route("POST", "/v1/me/devices", ({ req, body }) => {
     lastSeenAt: iso(now()),
     createdAt: iso(now()),
     revokedAt: null,
+    blocked: false,
   };
   devices.set(device.id, device);
   return { status: 201, body: publicDevice(device) };
@@ -511,17 +643,18 @@ route("DELETE", "/v1/me/devices/:id", ({ req, params }) => {
   const user = authenticate(req);
   const device = devices.get(params.id);
   if (!device || device.userId !== user.id) notFound("Device");
-  revokeDeviceRecord(device);
+  deactivateDevice(device, { blocked: false });
   return { status: 204 };
 });
 
 function publicDevice(device) {
-  const { userId: _userId, ...rest } = device;
+  const { userId: _userId, blocked: _blocked, ...rest } = device;
   return rest;
 }
 
-function revokeDeviceRecord(device) {
+function deactivateDevice(device, { blocked }) {
   device.revokedAt ??= iso(now());
+  if (blocked) device.blocked = true;
   for (const session of playbackSessions.values()) {
     if (session.deviceId === device.id) session.endedAt ??= iso(now());
   }
@@ -531,40 +664,44 @@ function revokeDeviceRecord(device) {
 
 route("GET", "/v1/admin/content", ({ req, query }) => {
   requireAdmin(req);
-  rejectUnknownQuery(query, ["kind", "status", "parentId", "page", "pageSize"]);
+  const checks = checkQuery(query, ["kind", "status", "parentId", "page", "pageSize"]);
   const kind = query.get("kind");
   const status = query.get("status");
   const parentId = query.get("parentId");
-  if (kind !== null && !["course", "lesson", "video"].includes(kind)) invalid("kind must be one of course, lesson, video");
-  if (status !== null && !["draft", "published", "unpublished"].includes(status)) {
-    invalid("status must be one of draft, published, unpublished");
-  }
-  if (parentId !== null && !UUID.test(parentId)) invalid("parentId must be a UUID");
+  if (kind !== null && !KINDS.includes(kind)) checks.add("kind", `kind must be one of ${KINDS.join(", ")}`);
+  if (status !== null && !STATUSES.includes(status)) checks.add("status", `status must be one of ${STATUSES.join(", ")}`);
+  if (parentId !== null && !UUID.test(parentId)) checks.add("parentId", "parentId must be a UUID");
+  const paging = pageQuery(query, checks);
+  checks.done();
+  // Without parentId: top-level items, newest updatedAt first. With parentId: its children by position.
   const items = [...content.values()]
     .filter((item) => (kind === null || item.kind === kind) && (status === null || item.publicationStatus === status))
-    .filter((item) => parentId === null || item.parentId === parentId)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .filter((item) => item.parentId === parentId)
+    .sort(parentId === null ? (a, b) => b.updatedAt.localeCompare(a.updatedAt) : byPosition)
     .map(publicContent);
-  return { status: 200, body: paginate(items, pageQuery(query)) };
+  return { status: 200, body: paginate(items, paging) };
 });
 
 route("POST", "/v1/admin/content", ({ req, body }) => {
   const admin = requireAdmin(req);
-  const fields = validateContentFields(body, { partial: false });
+  const fields = validateContent(body, { partial: false });
+  const rules = new Checks();
   if (fields.kind === "lesson") {
-    if (!fields.parentId) invalid("parentId is required for a lesson");
-    const parent = content.get(fields.parentId);
-    if (!parent || parent.kind !== "course") invalid("parentId must reference a course");
+    const parent = fields.parentId ? content.get(fields.parentId) : undefined;
+    if (!fields.parentId) rules.add("parentId", "parentId is required for a lesson");
+    else if (!parent || parent.kind !== "course") rules.add("parentId", "parentId must reference a course");
   } else if (fields.parentId) {
-    invalid("parentId is only allowed for a lesson");
+    rules.add("parentId", "parentId is only allowed for a lesson");
   }
-  if (fields.kind !== "lesson") delete fields.position;
-  if (fields.kind === "lesson" && fields.position === undefined) {
-    const siblings = [...content.values()].filter((item) => item.parentId === fields.parentId);
-    fields.position = siblings.reduce((max, item) => Math.max(max, item.position), 0) + 1;
+  rules.done();
+  const parentId = fields.parentId ?? null;
+  if (fields.position === undefined) {
+    // Goes last among its siblings (0-based).
+    const siblings = [...content.values()].filter((item) => item.parentId === parentId);
+    fields.position = siblings.length === 0 ? 0 : Math.max(...siblings.map((item) => item.position)) + 1;
   }
   const timestamp = iso(now());
-  const item = addContent({ ...fields, createdAt: timestamp, updatedAt: timestamp });
+  const item = addContent({ ...fields, parentId, createdAt: timestamp, updatedAt: timestamp });
   audit(admin, "content.create", item.id);
   return { status: 201, body: publicContent(item) };
 });
@@ -578,10 +715,7 @@ route("GET", "/v1/admin/content/:id", ({ req, params }) => {
 route("PATCH", "/v1/admin/content/:id", ({ req, params, body }) => {
   const admin = requireAdmin(req);
   const item = findContent(params.id);
-  const fields = validateContentFields(body, { partial: true });
-  if (fields.kind !== undefined && fields.kind !== item.kind) invalid("kind cannot be changed");
-  if (fields.parentId !== undefined && fields.parentId !== item.parentId) invalid("parentId cannot be changed");
-  if (fields.position !== undefined && item.kind !== "lesson") invalid("position is only allowed for a lesson");
+  const fields = validateContent(body, { partial: true });
   Object.assign(item, fields, { updatedAt: iso(now()) });
   audit(admin, "content.update", item.id);
   return { status: 200, body: publicContent(item) };
@@ -590,25 +724,21 @@ route("PATCH", "/v1/admin/content/:id", ({ req, params, body }) => {
 route("POST", "/v1/admin/content/:id/upload-session", ({ req, params }) => {
   const admin = requireAdmin(req);
   const item = findContent(params.id);
-  if (item.kind === "course") invalid("a course has no video; upload videos to its lessons");
+  if (item.kind === "course") invalid("kind", "a course has no video; upload videos to its lessons");
+  // Uploading again replaces the asset.
   const providerAssetId = `fake-${randomBytes(8).toString("hex")}`;
   const asset = { id: randomUUID(), processingStatus: "awaiting_upload" };
   item.asset = asset;
   item.providerAssetId = providerAssetId;
   item.updatedAt = iso(now());
-  uploads.set(providerAssetId, { contentId: item.id, assetId: asset.id });
+  const headers = { ...uploadHeaders };
+  uploads.set(providerAssetId, { contentId: item.id, assetId: asset.id, headers });
   const exp = Math.floor(Date.now() / 1000) + UPLOAD_URL_TTL_SECONDS;
   const uploadUrl = `${PUBLIC_BASE_URL}/v1/dev/media/uploads/${providerAssetId}?exp=${exp}&sig=${signUpload(providerAssetId, String(exp))}`;
   audit(admin, "content.upload_session", item.id);
   return {
     status: 201,
-    body: {
-      videoAssetId: asset.id,
-      uploadUrl,
-      method: "PUT",
-      headers: { "Content-Type": "application/octet-stream" },
-      expiresAt: iso(new Date(exp * 1000)),
-    },
+    body: { videoAssetId: asset.id, uploadUrl, method: "PUT", headers, expiresAt: iso(new Date(exp * 1000)) },
   };
 });
 
@@ -633,14 +763,22 @@ route("POST", "/v1/admin/content/:id/unpublish", ({ req, params }) => {
   return { status: 200, body: publicContent(item) };
 });
 
-// Fake media upload: a PUT with any body to a correctly signed, unexpired URL marks the asset ready.
+/**
+ * Fake media upload: a PUT with any body to a correctly signed, unexpired URL, carrying the
+ * headers the upload session returned, marks the asset ready (after MOCK_PROCESSING_DELAY_MS).
+ */
 route("PUT", "/v1/dev/media/uploads/:providerAssetId", async ({ req, params, query }) => {
+  await drain(req);
+  lastUpload = { headers: { ...req.headers } };
   const upload = uploads.get(params.providerAssetId);
   if (!upload || !verifyUploadSignature(params.providerAssetId, query.get("exp"), query.get("sig"))) {
-    await drain(req);
     fail(401, "INVALID_SIGNATURE", "Upload URL signature is invalid or expired.");
   }
-  await drain(req);
+  for (const [name, value] of Object.entries(upload.headers)) {
+    if (req.headers[name.toLowerCase()] !== value) {
+      fail(401, "INVALID_SIGNATURE", `Upload header ${name} does not match the signed request.`);
+    }
+  }
   const item = content.get(upload.contentId);
   if (!item || item.asset?.id !== upload.assetId) notFound("Upload");
   const markReady = () => {
@@ -661,15 +799,16 @@ route("PUT", "/v1/dev/media/uploads/:providerAssetId", async ({ req, params, que
 
 route("GET", "/v1/admin/users", ({ req, query }) => {
   requireAdmin(req);
-  rejectUnknownQuery(query, ["email", "page", "pageSize"]);
-  const email = query.get("email");
-  if (email === null || email.trim() === "") invalid("email should not be empty");
-  const needle = email.trim().toLowerCase();
+  const checks = checkQuery(query, ["email", "page", "pageSize"]);
+  const paging = pageQuery(query, checks);
+  checks.done();
+  // email is an optional case-insensitive substring; results are newest first.
+  const needle = (query.get("email") ?? "").trim().toLowerCase();
   const items = [...users.values()]
     .filter((entry) => entry.user.email.toLowerCase().includes(needle))
-    .sort((a, b) => a.user.email.localeCompare(b.user.email))
+    .sort((a, b) => b.user.createdAt.localeCompare(a.user.createdAt))
     .map((entry) => ({ user: entry.user, subscription: entry.subscription }));
-  return { status: 200, body: paginate(items, pageQuery(query)) };
+  return { status: 200, body: paginate(items, paging) };
 });
 
 route("GET", "/v1/admin/users/:id", ({ req, params }) => {
@@ -697,16 +836,17 @@ route("POST", "/v1/admin/users/:id/sessions/revoke", ({ req, params }) => {
   const admin = requireAdmin(req);
   const entry = UUID.test(params.id) ? users.get(params.id) : undefined;
   if (!entry) notFound("User");
-  revokeFamiliesOf(entry.user.id);
+  revokeAllSessionsOf(entry.user.id);
   audit(admin, "user.sessions_revoke", entry.user.id);
   return { status: 204 };
 });
 
+// Blocks the device permanently: registering it again returns 403 DEVICE_REVOKED.
 route("POST", "/v1/admin/devices/:id/revoke", ({ req, params }) => {
   const admin = requireAdmin(req);
   const device = devices.get(params.id);
   if (!device) notFound("Device");
-  revokeDeviceRecord(device);
+  deactivateDevice(device, { blocked: true });
   audit(admin, "device.revoke", device.id);
   return { status: 204 };
 });
@@ -720,11 +860,11 @@ route("POST", "/v1/admin/playback-sessions/:id/revoke", ({ req, params }) => {
   return { status: 204 };
 });
 
-// Test controls (not part of the API contract) ------------------------------------------------
-// Used by e2e/session.spec.ts to simulate the API rejecting tokens; a real API answers 404 here.
+// Test controls -------------------------------------------------------------------------------
 
 route("GET", "/__mock/state", () => ({ status: 200, body: { mock: true } }));
 
+/** Every access token is rejected from now on; refresh tokens keep working. */
 route("POST", "/__mock/expire-access-tokens", () => {
   accessTokens.clear();
   return { status: 204 };
@@ -735,6 +875,27 @@ route("POST", "/__mock/revoke-all-sessions", () => {
   for (const record of refreshTokens.values()) revokedFamilies.add(record.familyId);
   return { status: 204 };
 });
+
+/** The next request with this method and path gets the given status and JSON body. */
+route("POST", "/__mock/fail-next", ({ body }) => {
+  if (!isObject(body) || typeof body.method !== "string" || typeof body.path !== "string" || !Number.isInteger(body.status)) {
+    invalid("", "expected { method, path, status, body }");
+  }
+  scriptedFailures.push({ method: body.method.toUpperCase(), path: body.path, status: body.status, body: body.body });
+  return { status: 204 };
+});
+
+/** Headers returned by upload sessions created from now on. */
+route("POST", "/__mock/upload-headers", ({ body }) => {
+  if (!isObject(body) || !isObject(body.headers) || Object.values(body.headers).some((value) => typeof value !== "string")) {
+    invalid("headers", "expected { headers: Record<string, string> }");
+  }
+  uploadHeaders = { ...body.headers };
+  return { status: 204 };
+});
+
+/** Request headers of the most recent upload PUT. */
+route("GET", "/__mock/last-upload", () => ({ status: 200, body: lastUpload ?? { headers: null } }));
 
 // ---------------------------------------------------------------------------------------------
 // Server
@@ -755,7 +916,7 @@ function readJson(req) {
     req.on("data", (chunk) => {
       size += chunk.length;
       if (size > 1_000_000) {
-        reject(new HttpError(400, "VALIDATION_FAILED", "Request body too large."));
+        reject(validationError([{ field: "", message: "Request body too large." }]));
         req.destroy();
         return;
       }
@@ -766,7 +927,7 @@ function readJson(req) {
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
       } catch {
-        reject(new HttpError(400, "VALIDATION_FAILED", "Malformed JSON body."));
+        reject(validationError([{ field: "", message: "Malformed JSON body." }]));
       }
     });
     req.on("error", reject);
@@ -797,6 +958,12 @@ function send(res, status, body, extraHeaders) {
   }
 }
 
+function errorBody(error) {
+  const body = { statusCode: error.statusCode, code: error.code, message: error.message };
+  if (error.code === "VALIDATION_FAILED") body.errors = error.errors ?? [];
+  return body;
+}
+
 const server = createServer(async (req, res) => {
   const started = Date.now();
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
@@ -806,6 +973,15 @@ const server = createServer(async (req, res) => {
     if (req.method === "OPTIONS") {
       status = 204;
       return send(res, status, undefined, cors);
+    }
+    const scripted = scriptedFailures.findIndex(
+      (failure) => failure.method === req.method && failure.path === url.pathname,
+    );
+    if (scripted !== -1) {
+      const [failure] = scriptedFailures.splice(scripted, 1);
+      await drain(req);
+      status = failure.status;
+      return send(res, status, failure.body, cors);
     }
     const match = routes
       .map((candidate) => ({ candidate, result: candidate.regex.exec(url.pathname) }))
@@ -825,7 +1001,7 @@ const server = createServer(async (req, res) => {
   } catch (error) {
     if (error instanceof HttpError) {
       status = error.statusCode;
-      send(res, status, { statusCode: error.statusCode, code: error.code, message: error.message }, cors);
+      send(res, status, errorBody(error), cors);
     } else {
       console.error(error);
       status = 500;

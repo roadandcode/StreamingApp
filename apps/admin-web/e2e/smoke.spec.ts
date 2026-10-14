@@ -68,6 +68,7 @@ test("admin manages content and supports a user", async ({ page }) => {
   const courseTitle = `E2E course ${stamp}`;
   const lessonTitle = `E2E lesson ${stamp}`;
   const deviceName = `${DEVICE_PREFIX} ${stamp}`;
+  const thumbnailUrl = `https://images.example.test/e2e-${stamp}.jpg`;
 
   await test.step("sign in as admin", async () => {
     await signIn(page, admin);
@@ -86,11 +87,24 @@ test("admin manages content and supports a user", async ({ page }) => {
     await expect(page.getByRole("heading", { level: 1, name: "New course" })).toBeVisible();
     await page.getByLabel("Title").fill(courseTitle);
     await page.getByLabel("Description").fill("Created by the admin smoke test.");
+    await page.getByLabel("Thumbnail URL").fill(thumbnailUrl);
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page.getByRole("heading", { level: 1, name: courseTitle })).toBeVisible();
     await expect(page.getByTestId("publication-status")).toHaveText("Draft");
+    await expect(page.getByLabel("Thumbnail URL")).toHaveValue(thumbnailUrl);
+    await expect(page.getByRole("region", { name: "Video" })).toHaveCount(0);
   });
   const courseUrl = page.url();
+
+  await test.step("edit the course and clear its thumbnail", async () => {
+    await page.getByLabel("Description").fill("Created and edited by the admin smoke test.");
+    await page.getByLabel("Thumbnail URL").fill("");
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await expect(page.getByText("Changes saved.")).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("Description")).toHaveValue("Created and edited by the admin smoke test.");
+    await expect(page.getByLabel("Thumbnail URL")).toHaveValue("");
+  });
 
   await test.step("add a lesson", async () => {
     await page.getByRole("link", { name: "Add lesson", exact: true }).click();
@@ -123,6 +137,8 @@ test("admin manages content and supports a user", async ({ page }) => {
     await publish.click();
     await expect(page.getByTestId("publication-status")).toHaveText("Published");
     await expect(page.getByRole("button", { name: "Unpublish", exact: true })).toBeVisible();
+    // The course is still a draft, so viewers cannot see the lesson yet.
+    await expect(page.getByTestId("visibility-hint")).toContainText("hidden from viewers until the course");
   });
 
   await test.step("the lesson is listed on its course", async () => {
@@ -179,9 +195,11 @@ test("content form shows field-level validation errors", async ({ page }) => {
   await page.getByLabel("Description").fill("This item should not be created.");
   await page.getByLabel("Default language").fill("Hindi");
   await page.getByLabel("Regions").fill("India");
+  await page.getByLabel("Thumbnail URL").fill("not a url");
   await page.getByRole("button", { name: "Create", exact: true }).click();
 
   await expect(page.getByText("Use two-letter ISO country codes such as IN or NP")).toBeVisible();
+  await expect(page.getByText("Enter a full image URL starting with https://.")).toBeVisible();
   await expect(page.getByText("Use a language code such as hi, en or ta-IN.")).toBeVisible();
   await expect(page.getByLabel("Regions")).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByLabel("Title")).toHaveValue("Validation check");
