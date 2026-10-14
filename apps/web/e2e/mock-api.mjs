@@ -730,14 +730,21 @@ const server = createServer(async (req, res) => {
 
   try {
     if (req.method === "OPTIONS") {
-      res.writeHead(204, { ...cors, "access-control-allow-methods": "GET, HEAD, OPTIONS" });
+      const preflight = url.pathname.startsWith("/sample/")
+        ? { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, range" }
+        : cors;
+      res.writeHead(204, { ...preflight, "access-control-allow-methods": "GET, HEAD, OPTIONS" });
       res.end();
       return;
     }
     if (req.method === "GET" && url.pathname.startsWith("/sample/")) {
       const file = await serveSample(url.pathname.slice("/sample/".length));
       if (file) {
-        res.writeHead(200, { ...file.headers, ...cors, "cache-control": "no-store" });
+        // The sample stream is public, like the hosted test streams the real API redirects to. When
+        // the real API's manifest URL redirects here, the browser sends `Origin: null` after the
+        // cross-origin redirect, so a per-origin allow list would block it.
+        const sampleCors = { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, range" };
+        res.writeHead(200, { ...file.headers, ...sampleCors, "cache-control": "no-store" });
         res.end(file.raw);
         return;
       }
