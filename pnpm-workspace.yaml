@@ -1,0 +1,12 @@
+packages:
+  - services/*
+  - apps/admin-web
+  - packages/*
+
+# pnpm 10 blocks dependency install scripts unless they are listed here.
+onlyBuiltDependencies:
+  - "@nestjs/core"
+  - "@swc/core"
+  - esbuild
+  - sharp
+  - unrs-resolver
