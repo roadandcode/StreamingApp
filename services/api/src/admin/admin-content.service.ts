@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, count, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, max, type SQL } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { toContentSummary } from '../catalog/catalog.dto';
 import { AppException } from '../common/errors';
@@ -28,19 +28,25 @@ export class AdminContentService {
     private readonly audit: AuditService,
   ) {}
 
+  /**
+   * Without `parentId`: top-level items (courses and standalone videos), newest `updatedAt` first.
+   * With `parentId`: that item's children by position (ties by `createdAt`).
+   */
   async list(query: AdminContentQueryDto): Promise<PaginatedAdminContentDto> {
     const { page, pageSize, offset } = toPageRequest(query);
-    const conditions: SQL[] = [];
+    const conditions: SQL[] = [query.parentId ? eq(content.parentId, query.parentId) : isNull(content.parentId)];
     if (query.kind) conditions.push(eq(content.kind, query.kind));
     if (query.status) conditions.push(eq(content.publicationStatus, query.status));
-    if (query.parentId) conditions.push(eq(content.parentId, query.parentId));
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const where = and(...conditions);
+    const order = query.parentId
+      ? [asc(content.position), asc(content.createdAt), asc(content.id)]
+      : [desc(content.updatedAt), asc(content.id)];
     const [rows, [totalRow]] = await Promise.all([
       this.db
         .select()
         .from(content)
         .where(where)
-        .orderBy(desc(content.createdAt), asc(content.id))
+        .orderBy(...order)
         .limit(pageSize)
         .offset(offset),
       this.db.select({ total: count() }).from(content).where(where),
@@ -62,7 +68,9 @@ export class AdminContentService {
 
   async create(actorId: string, dto: CreateContentDto): Promise<AdminContentDto> {
     return this.db.transaction(async (tx) => {
-      await this.validateHierarchy(tx, { id: null, kind: dto.kind, parentId: dto.parentId ?? null });
+      const parentId = dto.parentId ?? null;
+      await this.validateHierarchy(tx, { id: null, kind: dto.kind, parentId });
+      const position = dto.position ?? (await this.nextPosition(tx, parentId));
       const [row] = await tx
         .insert(content)
         .values({
@@ -72,8 +80,9 @@ export class AdminContentService {
           accessTier: dto.accessTier,
           defaultLanguage: dto.defaultLanguage,
           ageRating: dto.ageRating ?? null,
-          parentId: dto.parentId ?? null,
-          position: dto.position ?? 0,
+          thumbnailUrl: dto.thumbnailUrl ?? null,
+          parentId,
+          position,
           publicationStatus: 'draft',
         })
         .returning();
@@ -93,26 +102,14 @@ export class AdminContentService {
   async update(actorId: string, id: string, dto: UpdateContentDto): Promise<AdminContentDto> {
     return this.db.transaction(async (tx) => {
       const existing = await this.findOrThrow(tx, id, true);
-      const kind = dto.kind ?? existing.kind;
-      const parentId = dto.parentId !== undefined ? dto.parentId : existing.parentId;
-      await this.validateHierarchy(tx, { id, kind, parentId });
-      if (kind !== 'course' && existing.kind === 'course') {
-        const [{ children } = { children: 0 }] = await tx
-          .select({ children: count() })
-          .from(content)
-          .where(eq(content.parentId, id));
-        if (children > 0) {
-          throw new AppException('VALIDATION_FAILED', 'A course with lessons cannot change its kind.');
-        }
-      }
+      // kind and parentId are not part of the PATCH body (unknown fields are rejected).
       const changes: Partial<typeof content.$inferInsert> = {};
-      if (dto.kind !== undefined) changes.kind = dto.kind;
       if (dto.title !== undefined) changes.title = dto.title;
       if (dto.description !== undefined) changes.description = dto.description;
       if (dto.accessTier !== undefined) changes.accessTier = dto.accessTier;
       if (dto.defaultLanguage !== undefined) changes.defaultLanguage = dto.defaultLanguage;
       if (dto.ageRating !== undefined) changes.ageRating = dto.ageRating;
-      if (dto.parentId !== undefined) changes.parentId = dto.parentId;
+      if (dto.thumbnailUrl !== undefined) changes.thumbnailUrl = dto.thumbnailUrl;
       if (dto.position !== undefined) changes.position = dto.position;
 
       let row = existing;
@@ -137,13 +134,23 @@ export class AdminContentService {
     });
   }
 
+  /**
+   * Each lesson or video has one video asset: a new upload session replaces it, and the content is
+   * not playable until the new asset is ready.
+   */
   async createUploadSession(actorId: string, id: string): Promise<UploadSessionDto> {
     const row = await this.findOrThrow(this.db, id);
     if (!PLAYABLE_KINDS.has(row.kind)) {
-      throw new AppException('VALIDATION_FAILED', 'Only lessons and videos have a video asset.');
+      throw new AppException('VALIDATION_FAILED', 'Courses have no video; upload to a lesson or a video.');
     }
     const session = await this.media.createUploadSession(id);
     return this.db.transaction(async (tx) => {
+      await this.findOrThrow(tx, id, true);
+      // TODO: with the real provider, also delete the replaced asset's files from storage.
+      const replaced = await tx
+        .delete(videoAssets)
+        .where(eq(videoAssets.contentId, id))
+        .returning({ id: videoAssets.id, providerAssetId: videoAssets.providerAssetId });
       const [asset] = await tx
         .insert(videoAssets)
         .values({
@@ -159,7 +166,11 @@ export class AdminContentService {
         action: 'content.upload_session.create',
         targetType: 'content',
         targetId: id,
-        metadata: { videoAssetId: asset.id, provider: this.media.name },
+        metadata: {
+          videoAssetId: asset.id,
+          provider: this.media.name,
+          replacedVideoAssetIds: replaced.map((r) => r.id),
+        },
       });
       return {
         videoAssetId: asset.id,
@@ -269,6 +280,15 @@ export class AdminContentService {
     if (!parent || parent.kind !== 'course') {
       throw AppException.invalidField('parentId', 'parentId must reference an existing course.');
     }
+  }
+
+  /** 0-based position after the last sibling (same parent, or top level). */
+  private async nextPosition(tx: Executor, parentId: string | null): Promise<number> {
+    const [row] = await tx
+      .select({ last: max(content.position) })
+      .from(content)
+      .where(parentId ? eq(content.parentId, parentId) : isNull(content.parentId));
+    return row?.last === null || row?.last === undefined ? 0 : row.last + 1;
   }
 
   private async replaceRegions(tx: Executor, contentId: string, regions: string[]): Promise<void> {

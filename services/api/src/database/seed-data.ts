@@ -85,7 +85,7 @@ const SEED_CONTENT: SeedContent[] = [
     id: SEED_IDS.freeLesson1,
     kind: 'lesson',
     parentId: SEED_IDS.freeCourse,
-    position: 1,
+    position: 0,
     title: 'Welcome',
     description: 'What this course covers.',
     accessTier: 'free',
@@ -97,7 +97,7 @@ const SEED_CONTENT: SeedContent[] = [
     id: SEED_IDS.freeLesson2,
     kind: 'lesson',
     parentId: SEED_IDS.freeCourse,
-    position: 2,
+    position: 1,
     title: 'Finding your way around',
     description: 'How courses, lessons and downloads work.',
     accessTier: 'free',
@@ -121,7 +121,7 @@ const SEED_CONTENT: SeedContent[] = [
     id: SEED_IDS.premiumLesson1,
     kind: 'lesson',
     parentId: SEED_IDS.premiumCourse,
-    position: 1,
+    position: 0,
     title: 'Masterclass, part 1',
     description: 'Foundations.',
     accessTier: 'premium',
@@ -133,7 +133,7 @@ const SEED_CONTENT: SeedContent[] = [
     id: SEED_IDS.premiumLesson2,
     kind: 'lesson',
     parentId: SEED_IDS.premiumCourse,
-    position: 2,
+    position: 1,
     title: 'Masterclass, part 2',
     description: 'Putting it together.',
     accessTier: 'premium',
@@ -234,7 +234,7 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
             processingStatus: 'ready',
             publishedAt: sql`now()`,
           })
-          .onConflictDoNothing({ target: videoAssets.providerAssetId });
+          .onConflictDoNothing();
       }
     }
 

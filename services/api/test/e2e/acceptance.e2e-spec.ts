@@ -372,7 +372,7 @@ describe('acceptance path (e2e)', () => {
         .put(pathOf(uploadBody.uploadUrl))
         .set('Content-Type', 'video/mp4')
         .send(Buffer.from('not really a video'))
-        .expect(200);
+        .expect(204);
 
       const published = await http(ctx.app).post(`/v1/admin/content/${lessonId}/publish`).set(bearer(admin.accessToken)).expect(200);
       expect(published.body).toMatchObject({

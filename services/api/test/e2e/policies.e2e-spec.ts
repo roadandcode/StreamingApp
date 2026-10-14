@@ -123,7 +123,7 @@ describe('devices, regions, subscription states and errors (e2e)', () => {
         .post(`/v1/admin/content/${usOnlyId}/upload-session`)
         .set(bearer(admin.accessToken))
         .expect(201);
-      await http(ctx.app).put(pathOf((upload.body as { uploadUrl: string }).uploadUrl)).send('bytes').expect(200);
+      await http(ctx.app).put(pathOf((upload.body as { uploadUrl: string }).uploadUrl)).send('bytes').expect(204);
       await http(ctx.app).post(`/v1/admin/content/${usOnlyId}/publish`).set(bearer(admin.accessToken)).expect(200);
       viewer = await registerUser(ctx.app);
       deviceId = await registerDevice(ctx.app, viewer);

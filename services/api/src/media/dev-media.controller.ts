@@ -47,14 +47,14 @@ export class DevMediaController {
     return secret;
   }
 
-  /** Simulated upload + transcoding: any body marks the asset `ready`. */
+  /** Simulated upload + transcoding: any body marks the asset `ready`; answers 204. */
   @Put('uploads/:providerAssetId')
-  @HttpCode(200)
+  @HttpCode(204)
   async upload(
     @Param('providerAssetId') providerAssetId: string,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<{ providerAssetId: string; processingStatus: 'ready' }> {
+  ): Promise<void> {
     allowCrossOrigin(response);
     if (!verifyUploadUrl(this.secret, providerAssetId, request.query, new Date())) {
       await drain(request);
@@ -69,7 +69,6 @@ export class DevMediaController {
     if (updated.length === 0) {
       throw new AppException('NOT_FOUND');
     }
-    return { providerAssetId, processingStatus: 'ready' };
   }
 
   /** A valid, unexpired manifest URL redirects to the public sample stream. */

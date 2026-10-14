@@ -32,7 +32,12 @@ export class AdminContentController {
   constructor(private readonly contentService: AdminContentService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List content in any publication state' })
+  @ApiOperation({
+    summary: 'List content in any publication state',
+    description:
+      'Without parentId: top-level items (courses and standalone videos), newest updatedAt first. ' +
+      'With parentId: its children by position.',
+  })
   @ApiOkResponse({ type: PaginatedAdminContentDto })
   @ApiErrors('VALIDATION_FAILED')
   list(@Query() query: AdminContentQueryDto): Promise<PaginatedAdminContentDto> {
@@ -56,7 +61,10 @@ export class AdminContentController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update any subset of the create fields' })
+  @ApiOperation({
+    summary: 'Update content',
+    description: 'kind and parentId cannot change; null clears ageRating and thumbnailUrl.',
+  })
   @ApiOkResponse({ type: AdminContentDto })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
   update(
@@ -68,7 +76,13 @@ export class AdminContentController {
   }
 
   @Post(':id/upload-session')
-  @ApiOperation({ summary: 'Create a video asset and a short-lived upload URL (PUT the file to it)' })
+  @ApiOperation({
+    summary: 'Create (or replace) the video asset and a short-lived upload URL',
+    description:
+      'PUT the file to uploadUrl with exactly the returned headers (they may be empty); a successful ' +
+      'upload answers 204. Uploading again replaces the asset; playback is refused until it is ready. ' +
+      '400 VALIDATION_FAILED for a course.',
+  })
   @ApiCreatedResponse({ type: UploadSessionDto })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND', 'PROVIDER_NOT_CONFIGURED')
   uploadSession(@CurrentUser() actor: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<UploadSessionDto> {

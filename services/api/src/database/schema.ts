@@ -150,7 +150,8 @@ export const videoAssets = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index('video_assets_content_id_idx').on(t.contentId, t.createdAt)],
+  // One asset per lesson or video; uploading again replaces it.
+  (t) => [uniqueIndex('video_assets_content_uq').on(t.contentId)],
 );
 
 export const subtitles = pgTable(
