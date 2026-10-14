@@ -18,7 +18,7 @@ Object.assign(process.env, {
   JWT_ACCESS_SECRET: 'e2e-test-jwt-secret-that-is-long-enough-0123456789',
   ACCESS_TOKEN_TTL_SECONDS: '900',
   REFRESH_TOKEN_TTL_DAYS: '30',
-  CORS_ORIGINS: 'http://localhost:3001',
+  CORS_ORIGINS: 'http://localhost:3001,http://localhost:3002',
   DEFAULT_COUNTRY_CODE: 'IN',
   TRUSTED_COUNTRY_HEADER: 'x-test-viewer-country',
   MAX_DEVICES: '3',

@@ -14,7 +14,7 @@ describe('parseEnv', () => {
       PORT: 3000,
       ACCESS_TOKEN_TTL_SECONDS: 900,
       REFRESH_TOKEN_TTL_DAYS: 30,
-      CORS_ORIGINS: ['http://localhost:3001'],
+      CORS_ORIGINS: ['http://localhost:3001', 'http://localhost:3002'],
       DEFAULT_COUNTRY_CODE: 'IN',
       MAX_DEVICES: 3,
       MAX_CONCURRENT_STREAMS: 2,

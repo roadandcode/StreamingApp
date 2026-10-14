@@ -264,8 +264,11 @@ describe('acceptance path (e2e)', () => {
     const session = await startPlayback(SEED_IDS.freeLesson2).expect(201);
     freeSessionManifest = (session.body as PlaybackAuthorizationBody).manifestUrl;
 
-    const ok = await http(ctx.app).get(pathOf(freeSessionManifest)).expect(302);
+    const ok = await http(ctx.app).get(pathOf(freeSessionManifest)).set('Origin', 'http://localhost:3002').expect(302);
     expect(ok.headers.location).toBe(process.env.FAKE_SAMPLE_MANIFEST_URL);
+    // Usable by the web player on the viewer website.
+    expect(ok.headers['access-control-allow-origin']).toBe('http://localhost:3002');
+    expect(ok.headers['cross-origin-resource-policy']).toBe('cross-origin');
 
     const url = new URL(freeSessionManifest);
     const sig = url.searchParams.get('sig') ?? '';

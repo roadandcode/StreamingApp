@@ -28,7 +28,7 @@ export const envSchema = z
     REFRESH_TOKEN_TTL_DAYS: int(30, 1, 365),
     CORS_ORIGINS: z
       .string()
-      .default('http://localhost:3001')
+      .default('http://localhost:3001,http://localhost:3002')
       .transform((value) =>
         value
           .split(',')

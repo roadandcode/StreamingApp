@@ -356,6 +356,14 @@ describe('devices, regions, subscription states and errors (e2e)', () => {
       expect(preflight.headers['access-control-allow-origin']).toBe('http://localhost:3001');
       expect(preflight.headers['access-control-allow-methods']).toContain('PUT');
 
+      // The viewer website's player fetches fake media URLs directly from the browser.
+      const webPreflight = await http(ctx.app)
+        .options('/v1/dev/media/fake_x/manifest.m3u8')
+        .set('Origin', 'http://localhost:3002')
+        .set('Access-Control-Request-Method', 'GET')
+        .expect(204);
+      expect(webPreflight.headers['access-control-allow-origin']).toBe('http://localhost:3002');
+
       const health = await http(ctx.app).get('/v1/health').set('Origin', 'https://evil.example').expect(200);
       expect(health.headers['access-control-allow-origin']).toBeUndefined();
       expect(health.headers['x-content-type-options']).toBe('nosniff');

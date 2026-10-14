@@ -20,6 +20,15 @@ function drain(request: Request): Promise<void> {
 }
 
 /**
+ * Lets browsers on the allowed origins (admin upload, web player) use these responses: CORS headers
+ * come from the global CORS setup; helmet's default `Cross-Origin-Resource-Policy: same-origin` would
+ * still block no-cors loads such as a native `<video>` element, so it is relaxed here.
+ */
+function allowCrossOrigin(response: Response): void {
+  response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+}
+
+/**
  * Routes that stand in for S3 and CloudFront in development. Mounted only when MEDIA_PROVIDER=fake
  * outside production. The URLs are opaque to clients, so they are not part of the OpenAPI document.
  */
@@ -44,7 +53,9 @@ export class DevMediaController {
   async upload(
     @Param('providerAssetId') providerAssetId: string,
     @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<{ providerAssetId: string; processingStatus: 'ready' }> {
+    allowCrossOrigin(response);
     if (!verifyUploadUrl(this.secret, providerAssetId, request.query, new Date())) {
       await drain(request);
       throw new AppException('INVALID_SIGNATURE');
@@ -71,6 +82,7 @@ export class DevMediaController {
     if (!verifyManifestUrl(this.secret, providerAssetId, request.query, new Date())) {
       throw new AppException('INVALID_SIGNATURE');
     }
+    allowCrossOrigin(response);
     response.setHeader('Cache-Control', 'no-store');
     response.redirect(302, this.config.get('FAKE_SAMPLE_MANIFEST_URL'));
   }
