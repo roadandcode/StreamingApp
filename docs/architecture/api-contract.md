@@ -53,8 +53,11 @@ errors next to the right input.
 | 409 | `DEVICE_LIMIT_REACHED` | Registering more than `MAX_DEVICES` active devices |
 | 409 | `PURCHASE_BELONGS_TO_OTHER_ACCOUNT` | Store subscription already linked to another user |
 | 409 | `ASSET_NOT_READY` | Publishing playable content whose video is not `ready` |
+| 413 | `VALIDATION_FAILED` | Request body too large |
 | 429 | `RATE_LIMITED` | Throttled |
-| 503 | `PROVIDER_NOT_CONFIGURED` | Real Apple/Google/AWS integration not configured (fails closed) |
+| 500 | `INTERNAL_ERROR` | Unexpected server error (no internal details are returned) |
+| 503 | `PROVIDER_NOT_CONFIGURED` | Real Apple/Google/AWS/Razorpay integration not configured (fails closed) |
+| 503 | `SERVICE_UNAVAILABLE` | A dependency is down (database, or Razorpay unreachable) |
 
 ## Shared types
 
@@ -265,7 +268,12 @@ example while the app was in the background) returns `403 PLAYBACK_SESSION_ENDED
 a new session, which re-applies the concurrent-stream limit.
 
 A heartbeat re-runs checks 1, 2, 4 and 5, so unpublishing content or removing a region also ends
-active sessions. If any fails, the session is revoked and the heartbeat returns that error code. A heartbeat on an ended or revoked session returns `403 PLAYBACK_SESSION_ENDED`.
+active sessions. If any fails, the session is revoked and the heartbeat returns that error code.
+Sessions can also be revoked outside a heartbeat (a webhook ends the subscription, a device is removed
+or blocked, an admin revokes the session). The next heartbeat on such a session returns
+`403 ENTITLEMENT_REQUIRED` when the subscription lapsed, `403 DEVICE_REVOKED` when the device was
+removed or blocked, and `403 PLAYBACK_SESSION_ENDED` otherwise; any later heartbeat on an ended
+session returns `403 PLAYBACK_SESSION_ENDED`.
 Clients send heartbeats every `heartbeatIntervalSeconds` and stop the player on any 403.
 
 ### Webhooks (server-to-server)
@@ -319,7 +327,7 @@ Content rules:
   its course are published. A lesson can be published while its course is still a draft, so a course
   can be prepared and released in one step.
 - Each lesson or video has one video asset. Uploading again replaces it: the new asset starts in
-  `processing`, and playback returns `403 CONTENT_NOT_PLAYABLE` until it is `ready`. Unpublish first if
+  `awaiting_upload`, moves to `processing` and then `ready`, and playback returns `403 CONTENT_NOT_PLAYABLE` until it is `ready`. Unpublish first if
   that gap is not acceptable.
 - The upload `headers` must be sent exactly as returned (they may be empty). A successful upload `PUT`
   returns `204`.
@@ -371,6 +379,8 @@ mode when `NODE_ENV=production`.
 | `FAKE_WEBHOOK_SECRET` | — | required when `BILLING_MODE=fake` |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` / `RAZORPAY_WEBHOOK_SECRET` | unset | web checkout; unset means `503 PROVIDER_NOT_CONFIGURED` |
 | `RAZORPAY_PLAN_ID_MONTHLY` / `RAZORPAY_PLAN_ID_YEARLY` | unset | Razorpay `plan_id`s the seed maps to `premium_monthly` / `premium_yearly` |
+| `THROTTLE_AUTH_LIMIT` / `THROTTLE_AUTH_TTL_SECONDS` | `10` / `60` | requests per window on auth routes |
+| `THROTTLE_PLAYBACK_LIMIT` / `THROTTLE_PLAYBACK_TTL_SECONDS` | `60` / `60` | requests per window on playback routes |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | — | used by the seed script only |
 
 ## Client configuration

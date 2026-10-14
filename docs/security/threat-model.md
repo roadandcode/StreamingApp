@@ -137,7 +137,7 @@ re-run against staging with the real providers before launch.
 | 5 | Same store purchase submitted from a second account | `409 PURCHASE_BELONGS_TO_OTHER_ACCOUNT` |
 | 6 | Webhook with a bad `X-Fake-Signature` | `401 INVALID_SIGNATURE`; no state change |
 | 7 | Same webhook `eventId` delivered twice | Second call `200 { "duplicate": true }`; applied once |
-| 8 | `EXPIRED`, `REFUNDED` or `REVOKED` event | `hasAccess: false`; next heartbeat revokes the session; new sessions get `403 ENTITLEMENT_REQUIRED` |
+| 8 | `EXPIRED`, `REFUNDED` or `REVOKED` event | `hasAccess: false`; premium sessions are revoked at once and their next heartbeat gets `403 ENTITLEMENT_REQUIRED`; new sessions get `403 ENTITLEMENT_REQUIRED` |
 | 9 | `CANCELLED` event before period end | `status: "cancelled"`, `hasAccess: true` until `accessUntil` |
 | 10 | Manifest URL with an expired `exp` or altered `sig`/`sid` | `401 INVALID_SIGNATURE` |
 | 11 | Heartbeat on an ended or revoked session | `403 PLAYBACK_SESSION_ENDED` |
