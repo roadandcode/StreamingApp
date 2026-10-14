@@ -16,7 +16,7 @@ export class PlansService {
   ) {}
 
   private get fakeBillingEnabled(): boolean {
-    return isFakeBillingEnabled({ BILLING_MODE: this.config.get('BILLING_MODE'), NODE_ENV: this.config.get('NODE_ENV') });
+    return isFakeBillingEnabled({ BILLING_MODE: this.config.get('BILLING_MODE'), APP_ENV: this.config.get('APP_ENV') });
   }
 
   /** Plans with their store product ids. Fake products are listed only in fake billing mode. */

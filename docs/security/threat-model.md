@@ -89,7 +89,7 @@ flowchart LR
 | B6 | CDN ↔ origin and API | The S3 origin is reachable only through CloudFront. The viewer-country header is trusted only when `TRUSTED_COUNTRY_HEADER` is set **and** the API is reachable only through the CDN, which overwrites that header. |
 | B7 | API → database | Private network, TLS, least-privilege runtime account separate from the migration account. |
 | B9 | Viewer browser → viewer web server → API | Same model as B2: API tokens stay in encrypted httpOnly cookies; the per-browser `installationId` is an httpOnly cookie; the browser talks directly only to the CDN, the DRM license service and Razorpay Checkout. A Content-Security-Policy limits scripts to the site and Razorpay. |
-| B8 | Development → production | Fake media and billing providers and `/v1/dev/*` routes cannot run with `NODE_ENV=production`; the API refuses to start. |
+| B8 | Development → production | Fake media and billing providers and `/v1/dev/*` routes cannot run with `APP_ENV=production` (the default whenever `NODE_ENV=production`); the API refuses to start. Only `APP_ENV=staging` test deployments keep them, and they must never hold real users or content. |
 
 ## 4. Attacks and defenses
 
@@ -117,7 +117,7 @@ flowchart LR
 | Steal a server secret from the app binary | The app contains no secrets (only the API base URL); all signing, store and DRM credentials are server-side in the secret manager. | Mobile build, secret manager |
 | Read tokens from a device | Tokens and `installationId` live in platform secure storage (Android Keystore-backed storage, iOS Keychain); tokens and signed URLs are never logged. | Mobile app |
 | Record the screen | DRM output protection where the OS supports it; `FLAG_SECURE` on Android playback screens; iOS screen-capture state is observed and protected playback is not captured by the OS. Residual risk remains (see [§6](#6-residual-risks)). | Mobile app, DRM |
-| Fake providers left on in production | API refuses to start with fake modes when `NODE_ENV=production`; `/v1/dev/*` and `/v1/webhooks/fake` are not mounted. | API configuration |
+| Fake providers left on in production | API refuses to start with fake modes when `APP_ENV=production` (the default with `NODE_ENV=production`); `/v1/dev/*` and `/v1/webhooks/fake` are not mounted. | API configuration |
 | Deleted or suspended account keeps watching | Check 1 (account active) on every new session and heartbeat; `DELETE /v1/me` revokes login sessions, devices and playback sessions. | Users and playback modules |
 
 ## 5. Acceptance criteria
@@ -149,7 +149,7 @@ re-run against staging with the real providers before launch.
 | 17 | Viewer calling `/v1/admin/*` | `403 FORBIDDEN` |
 | 18 | Content not available in the viewer's country | Hidden from the catalog, `404 NOT_FOUND` on detail, `403 REGION_NOT_ALLOWED` on playback |
 | 19 | Suspended or deleted account | `403 ACCOUNT_INACTIVE` (or `401` once tokens are revoked) |
-| 20 | `NODE_ENV=production` with `MEDIA_PROVIDER=fake` or `BILLING_MODE=fake` | API refuses to start |
+| 20 | `APP_ENV=production` (or `NODE_ENV=production` without `APP_ENV`) with `MEDIA_PROVIDER=fake` or `BILLING_MODE=fake` | API refuses to start |
 
 ## 6. Residual risks
 

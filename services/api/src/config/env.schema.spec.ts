@@ -47,6 +47,30 @@ describe('parseEnv', () => {
     );
   });
 
+  it('defaults APP_ENV to NODE_ENV', () => {
+    expect(parseEnv(base).APP_ENV).toBe('development');
+    expect(parseEnv({ ...base, NODE_ENV: 'test' }).APP_ENV).toBe('test');
+    expect(parseEnv({ ...base, NODE_ENV: 'production', MEDIA_PROVIDER: 'aws', BILLING_MODE: 'live' }).APP_ENV).toBe(
+      'production',
+    );
+  });
+
+  it('allows fake providers on a staging deployment that runs with NODE_ENV=production', () => {
+    expect(parseEnv({ ...base, NODE_ENV: 'production', APP_ENV: 'staging' })).toMatchObject({
+      NODE_ENV: 'production',
+      APP_ENV: 'staging',
+      MEDIA_PROVIDER: 'fake',
+      BILLING_MODE: 'fake',
+    });
+    expect(() => parseEnv({ ...base, NODE_ENV: 'production', APP_ENV: 'production' })).toThrow(/MEDIA_PROVIDER/);
+  });
+
+  it('only accepts staging or production as APP_ENV when NODE_ENV=production', () => {
+    expect(() =>
+      parseEnv({ ...base, NODE_ENV: 'production', APP_ENV: 'development', MEDIA_PROVIDER: 'aws', BILLING_MODE: 'live' }),
+    ).toThrow(/APP_ENV/);
+  });
+
   it('requires the fake secrets only when the fake modes are on', () => {
     expect(() => parseEnv({ ...base, FAKE_MEDIA_SIGNING_SECRET: '' })).toThrow(/FAKE_MEDIA_SIGNING_SECRET/);
     expect(() => parseEnv({ ...base, FAKE_WEBHOOK_SECRET: undefined })).toThrow(/FAKE_WEBHOOK_SECRET/);

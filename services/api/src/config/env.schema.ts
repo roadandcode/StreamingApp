@@ -18,6 +18,11 @@ export const DEFAULT_SAMPLE_MANIFEST_URL = 'https://test-streams.mux.dev/x36xhzz
 export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    /**
+     * Deployment environment. Defaults to NODE_ENV. With NODE_ENV=production it may only be
+     * `production` (the default) or `staging`; fake providers are refused only in `production`.
+     */
+    APP_ENV: z.enum(['development', 'test', 'staging', 'production']).optional(),
     PORT: int(3000, 1, 65535),
     DATABASE_URL: z
       .string()
@@ -66,19 +71,26 @@ export const envSchema = z
     THROTTLE_PLAYBACK_TTL_SECONDS: int(60, 1, 86_400),
   })
   .superRefine((env, ctx) => {
-    if (env.NODE_ENV === 'production') {
+    if (env.NODE_ENV === 'production' && env.APP_ENV && !['staging', 'production'].includes(env.APP_ENV)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['APP_ENV'],
+        message: 'must be staging or production when NODE_ENV=production',
+      });
+    }
+    if (resolveAppEnv(env) === 'production') {
       if (env.MEDIA_PROVIDER === 'fake') {
         ctx.addIssue({
           code: 'custom',
           path: ['MEDIA_PROVIDER'],
-          message: 'the fake media provider is not allowed when NODE_ENV=production',
+          message: 'the fake media provider is not allowed when APP_ENV=production',
         });
       }
       if (env.BILLING_MODE === 'fake') {
         ctx.addIssue({
           code: 'custom',
           path: ['BILLING_MODE'],
-          message: 'fake billing is not allowed when NODE_ENV=production',
+          message: 'fake billing is not allowed when APP_ENV=production',
         });
       }
     }
@@ -103,9 +115,18 @@ export const envSchema = z
         message: 'must be longer than PLAYBACK_HEARTBEAT_INTERVAL_SECONDS',
       });
     }
-  });
+  })
+  .transform((env) => ({ ...env, APP_ENV: resolveAppEnv(env) }));
 
 export type Env = z.output<typeof envSchema>;
+export type AppEnv = Env['APP_ENV'];
+
+function resolveAppEnv(env: {
+  NODE_ENV: 'development' | 'test' | 'production';
+  APP_ENV?: 'development' | 'test' | 'staging' | 'production';
+}): 'development' | 'test' | 'staging' | 'production' {
+  return env.APP_ENV ?? env.NODE_ENV;
+}
 
 /**
  * Validates raw environment variables. Empty strings count as unset so that `FOO=` in a .env file
@@ -125,13 +146,13 @@ export function parseEnv(raw: Record<string, unknown>): Env {
   return result.data;
 }
 
-/** Fake providers and the /v1/dev/* routes are only ever mounted outside production. */
-export function isFakeMediaEnabled(env: Pick<Env, 'MEDIA_PROVIDER' | 'NODE_ENV'>): boolean {
-  return env.MEDIA_PROVIDER === 'fake' && env.NODE_ENV !== 'production';
+/** Fake providers and the /v1/dev/* routes are only ever mounted outside APP_ENV=production. */
+export function isFakeMediaEnabled(env: Pick<Env, 'MEDIA_PROVIDER' | 'APP_ENV'>): boolean {
+  return env.MEDIA_PROVIDER === 'fake' && env.APP_ENV !== 'production';
 }
 
-export function isFakeBillingEnabled(env: Pick<Env, 'BILLING_MODE' | 'NODE_ENV'>): boolean {
-  return env.BILLING_MODE === 'fake' && env.NODE_ENV !== 'production';
+export function isFakeBillingEnabled(env: Pick<Env, 'BILLING_MODE' | 'APP_ENV'>): boolean {
+  return env.BILLING_MODE === 'fake' && env.APP_ENV !== 'production';
 }
 
 /** Razorpay web checkout needs all three credentials; otherwise its endpoints fail closed (503). */

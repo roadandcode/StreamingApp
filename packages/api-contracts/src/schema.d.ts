@@ -390,7 +390,7 @@ export interface paths {
         put?: never;
         /**
          * Simulated store notification (development only)
-         * @description Only mounted when BILLING_MODE=fake and NODE_ENV is not production. `X-Fake-Signature` is the hex HMAC-SHA256 of the raw body with FAKE_WEBHOOK_SECRET.
+         * @description Only mounted when BILLING_MODE=fake and APP_ENV is not production. `X-Fake-Signature` is the hex HMAC-SHA256 of the raw body with FAKE_WEBHOOK_SECRET.
          */
         post: operations["fakeWebhooksFake"];
         delete?: never;

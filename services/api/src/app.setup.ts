@@ -26,7 +26,7 @@ export function configureApp(app: INestApplication, env: Env, options: { swagger
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();
 
-  if (options.swaggerUi ?? env.NODE_ENV !== 'production') {
+  if (options.swaggerUi ?? env.APP_ENV !== 'production') {
     SwaggerModule.setup('docs', app, () => buildOpenApiDocument(app), {
       jsonDocumentUrl: 'docs/openapi.json',
     });

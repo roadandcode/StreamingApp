@@ -151,8 +151,9 @@ flutter run --dart-define=API_BASE_URL=http://localhost:3000 --dart-define=FAKE_
 ## 9. The fake providers
 
 The fakes exist so the whole flow can be exercised without any external account. The API refuses to
-start with either fake when `NODE_ENV=production`, and `/v1/dev/*` and `/v1/webhooks/fake` are never
-mounted in production.
+start with either fake when `APP_ENV=production` (the default whenever `NODE_ENV=production`), and
+`/v1/dev/*` and `/v1/webhooks/fake` are never mounted there. Hosted test deployments use
+`APP_ENV=staging`.
 
 ### Fake media
 
@@ -261,7 +262,7 @@ pretty-print or re-serialize the JSON after signing, the signature no longer mat
 | `pnpm install` warns that build scripts were ignored | pnpm 10 only runs install scripts for packages listed under `onlyBuiltDependencies` in `pnpm-workspace.yaml`. Add a package there only if it really needs its script. |
 | Port 5432 already in use | Stop the other PostgreSQL, or change the port mapping in `docker-compose.yml` and `DATABASE_URL`. |
 | `database "streaming_test" does not exist` | The init script only runs when the Docker volume is first created. Run `docker compose exec postgres createdb -U streaming streaming_test`, or `docker compose down -v` (this deletes local data) and start again. |
-| API exits on start-up | Check `services/api/.env`: `JWT_ACCESS_SECRET` must be at least 32 characters, and `FAKE_MEDIA_SIGNING_SECRET` / `FAKE_WEBHOOK_SECRET` are required in fake modes. With `NODE_ENV=production` the fakes are refused by design. |
+| API exits on start-up | Check `services/api/.env`: `JWT_ACCESS_SECRET` must be at least 32 characters, and `FAKE_MEDIA_SIGNING_SECRET` / `FAKE_WEBHOOK_SECRET` are required in fake modes. With `APP_ENV=production` (the default when `NODE_ENV=production`) the fakes are refused by design. |
 | `503 PROVIDER_NOT_CONFIGURED` | You are using `apple`, `google`, `MEDIA_PROVIDER=aws` or `BILLING_MODE=live`. Locally, use the fakes. |
 | Empty catalog | Run `db:seed`. The viewer's country defaults to `DEFAULT_COUNTRY_CODE` (`IN`), so content must be published and available in `IN`. |
 | Android emulator cannot reach the API | Use `http://10.0.2.2:3000`, not `localhost`. If the app reports that cleartext HTTP is not permitted, the debug build needs a cleartext exception for the development host. |

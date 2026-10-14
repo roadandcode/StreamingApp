@@ -335,7 +335,8 @@ Content rules:
 ## Fake providers (development and tests only)
 
 Enabled by `MEDIA_PROVIDER=fake` and `BILLING_MODE=fake`. The API refuses to start with either fake
-mode when `NODE_ENV=production`.
+mode when `APP_ENV=production` (the default whenever `NODE_ENV=production`). A hosted test deployment
+sets `APP_ENV=staging` to keep the fakes.
 
 **Fake media**
 - `uploadUrl` = `{PUBLIC_API_BASE_URL}/v1/dev/media/uploads/{providerAssetId}?exp=<unix>&sig=<hex>`.
@@ -358,7 +359,8 @@ mode when `NODE_ENV=production`.
 
 | Name | Default (dev) | Notes |
 |---|---|---|
-| `NODE_ENV` | `development` | `production` disables fake providers and `/v1/dev/*` |
+| `NODE_ENV` | `development` | `development` \| `test` \| `production` |
+| `APP_ENV` | same as `NODE_ENV` | `development` \| `test` \| `staging` \| `production`. With `NODE_ENV=production` only `staging` or `production` (the default) is accepted. `APP_ENV=production` refuses fake providers and hides `/v1/dev/*` and `/docs`. |
 | `PORT` | `3000` | |
 | `DATABASE_URL` | `postgres://streaming:streaming@localhost:5432/streaming_dev` | tests use `streaming_test` |
 | `JWT_ACCESS_SECRET` | — (required, ≥ 32 chars) | |

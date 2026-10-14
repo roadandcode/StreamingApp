@@ -19,7 +19,7 @@ async function bootstrap(): Promise<void> {
   configureApp(app, env);
   await app.listen(env.PORT);
   Logger.log(
-    `API listening on port ${env.PORT} (media: ${env.MEDIA_PROVIDER}, billing: ${env.BILLING_MODE}, env: ${env.NODE_ENV})`,
+    `API listening on port ${env.PORT} (media: ${env.MEDIA_PROVIDER}, billing: ${env.BILLING_MODE}, env: ${env.APP_ENV})`,
     'Bootstrap',
   );
 }

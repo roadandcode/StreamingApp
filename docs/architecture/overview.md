@@ -504,7 +504,8 @@ Responsibilities, per provider (Apple, Google, later Razorpay):
 ### Safety rails
 
 - The API refuses to start with `MEDIA_PROVIDER=fake` or `BILLING_MODE=fake` when
-  `NODE_ENV=production`, and `/v1/dev/*` and `/v1/webhooks/fake` are not mounted in production.
+  `APP_ENV=production` (the default whenever `NODE_ENV=production`), and `/v1/dev/*` and
+  `/v1/webhooks/fake` are not mounted there. Only a staging deployment (`APP_ENV=staging`) keeps them.
 - A missing or misconfigured real provider always fails closed (`503`), never open.
 - All webhook handlers follow the same pattern: verify authenticity first, store the event in
   `provider_events` keyed by `(provider, eventId)`, return `200 { "duplicate": true }` for a repeat
