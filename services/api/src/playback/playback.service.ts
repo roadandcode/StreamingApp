@@ -17,6 +17,18 @@ import {
 
 type HeartbeatOutcome = { ok: true; expiresAt: Date } | { ok: false; code: PlaybackDenialCode | 'PLAYBACK_SESSION_ENDED' };
 
+/**
+ * Revocation reasons the client can act on: a lapsed subscription (show the paywall) or a removed or
+ * blocked device (sign out). Other revocations surface as PLAYBACK_SESSION_ENDED.
+ */
+const CLIENT_ACTIONABLE_REVOCATIONS = ['ENTITLEMENT_REQUIRED', 'DEVICE_REVOKED'] as const;
+
+function isClientActionableRevocation(
+  reason: string | null,
+): reason is (typeof CLIENT_ACTIONABLE_REVOCATIONS)[number] {
+  return (CLIENT_ACTIONABLE_REVOCATIONS as readonly (string | null)[]).includes(reason);
+}
+
 @Injectable()
 export class PlaybackService {
   constructor(
@@ -137,7 +149,9 @@ export class PlaybackService {
 
   /**
    * Re-runs checks 1, 2, 4 and 5. On failure the session is revoked (committed) and the failing
-   * code is returned; ended, revoked, expired or stale sessions get PLAYBACK_SESSION_ENDED.
+   * code is returned. A session revoked because the subscription lapsed or the device was removed
+   * returns that reason (ENTITLEMENT_REQUIRED / DEVICE_REVOKED) on the next heartbeat; later
+   * heartbeats and other ended, revoked, expired or stale sessions get PLAYBACK_SESSION_ENDED.
    */
   async heartbeat(userId: string, sessionId: string, dto: HeartbeatDto, country: string): Promise<HeartbeatResponseDto> {
     const now = new Date();
@@ -150,6 +164,11 @@ export class PlaybackService {
         .limit(1);
       if (!session) {
         throw new AppException('NOT_FOUND');
+      }
+      if (session.revokedAt && !session.endedAt && isClientActionableRevocation(session.revokeReason)) {
+        // Report the reason once, then treat the session as ended.
+        await tx.update(playbackSessions).set({ endedAt: now }).where(eq(playbackSessions.id, session.id));
+        return { ok: false, code: session.revokeReason };
       }
       if (session.endedAt || session.revokedAt) {
         return { ok: false, code: 'PLAYBACK_SESSION_ENDED' };

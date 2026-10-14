@@ -13,7 +13,8 @@ export interface RevocationScope {
 
 /**
  * Revokes open playback sessions (not ended, not revoked) in the given scope. The next heartbeat on a
- * revoked session gets `403 PLAYBACK_SESSION_ENDED`. Returns the number of sessions revoked.
+ * revoked session gets the reason once when it is ENTITLEMENT_REQUIRED or DEVICE_REVOKED, otherwise
+ * `403 PLAYBACK_SESSION_ENDED`. Returns the number of sessions revoked.
  */
 export async function revokePlaybackSessions(
   db: Executor,

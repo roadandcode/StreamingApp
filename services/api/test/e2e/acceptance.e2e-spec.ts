@@ -230,7 +230,9 @@ describe('acceptance path (e2e)', () => {
     expect(fresh.body.code).toBe('ENTITLEMENT_REQUIRED');
 
     const beat = await heartbeat(premiumSessions[0]).expect(403);
-    expect(beat.body.code).toBe('PLAYBACK_SESSION_ENDED');
+    expect(beat.body.code).toBe('ENTITLEMENT_REQUIRED');
+    const again = await heartbeat(premiumSessions[0]).expect(403);
+    expect(again.body.code).toBe('PLAYBACK_SESSION_ENDED');
     const [revoked] = await ctx.db.select().from(playbackSessions).where(eq(playbackSessions.id, premiumSessions[0]));
     expect(revoked?.revokedAt).not.toBeNull();
   });
@@ -457,6 +459,7 @@ describe('acceptance path (e2e)', () => {
     const sessionId = (session.body as PlaybackAuthorizationBody).playbackSessionId;
     await http(ctx.app).delete(`/v1/me/devices/${deviceId}`).set(bearer(viewer.accessToken)).expect(204);
 
+    expect((await heartbeat(sessionId).expect(403)).body.code).toBe('DEVICE_REVOKED');
     expect((await heartbeat(sessionId).expect(403)).body.code).toBe('PLAYBACK_SESSION_ENDED');
     expect((await startPlayback(SEED_IDS.freeLesson1).expect(403)).body.code).toBe('DEVICE_REVOKED');
     const list = await http(ctx.app).get('/v1/me/devices').set(bearer(viewer.accessToken)).expect(200);
@@ -481,6 +484,7 @@ describe('acceptance path (e2e)', () => {
     const admin = await loginAdmin(ctx.app);
     await http(ctx.app).post(`/v1/admin/devices/${deviceId}/revoke`).set(bearer(admin.accessToken)).expect(204);
 
+    expect((await heartbeat(sessionId).expect(403)).body.code).toBe('DEVICE_REVOKED');
     expect((await heartbeat(sessionId).expect(403)).body.code).toBe('PLAYBACK_SESSION_ENDED');
     const reRegister = await http(ctx.app)
       .post('/v1/me/devices')
