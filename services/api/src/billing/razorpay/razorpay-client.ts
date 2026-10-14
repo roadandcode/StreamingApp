@@ -32,7 +32,29 @@ export const RAZORPAY_CLIENT = Symbol('RAZORPAY_CLIENT');
 
 export const RAZORPAY_API_BASE_URL = 'https://api.razorpay.com/v1';
 
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+/**
+ * The parts of fetch this client uses, declared here so the code does not depend on which fetch
+ * typings a build environment provides.
+ */
+interface HttpRequest {
+  method: 'GET' | 'POST';
+  headers: Record<string, string>;
+  body?: string;
+  signal?: AbortSignal;
+}
+
+interface HttpResponse {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}
+
+type FetchLike = (input: string, init: HttpRequest) => Promise<HttpResponse>;
+
+const globalFetch: FetchLike = (input, init) =>
+  // Needed where the build's fetch typings declare a Response without ok/status/json.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  fetch(input, init) as unknown as Promise<HttpResponse>;
 
 /** Plain-fetch client with HTTP Basic auth (key id and key secret). No SDK. */
 export class HttpRazorpayClient implements RazorpayClient {
@@ -40,7 +62,7 @@ export class HttpRazorpayClient implements RazorpayClient {
     private readonly keyId: string,
     private readonly keySecret: string,
     private readonly baseUrl: string = RAZORPAY_API_BASE_URL,
-    private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
+    private readonly fetchImpl: FetchLike = globalFetch,
     private readonly timeoutMs = 10_000,
   ) {}
 
@@ -62,7 +84,7 @@ export class HttpRazorpayClient implements RazorpayClient {
 
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
     const auth = Buffer.from(`${this.keyId}:${this.keySecret}`).toString('base64');
-    let response: Response;
+    let response: HttpResponse;
     try {
       response = await this.fetchImpl(`${this.baseUrl}${path}`, {
         method,
