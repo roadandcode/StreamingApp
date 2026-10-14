@@ -18,6 +18,7 @@ import {
 import { LANGUAGE_TAG_PATTERN, ContentSummaryDto } from '../catalog/catalog.dto';
 import { ACCESS_TIERS, CONTENT_KINDS, PROCESSING_STATUSES, PUBLICATION_STATUSES } from '../common/enums';
 import { PaginationQueryDto } from '../common/pagination';
+import { EachElement } from '../common/validation';
 import type { AccessTier, ContentKind, ProcessingStatus, PublicationStatus } from '../database/schema';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -98,7 +99,7 @@ export class CreateContentDto {
   @IsArray()
   @ArrayMaxSize(250)
   @ArrayUnique()
-  @Matches(/^[A-Z]{2}$/, { each: true, message: 'regions must be ISO-3166 alpha-2 country codes' })
+  @EachElement('isCountryCode', (v) => typeof v === 'string' && /^[A-Z]{2}$/.test(v), 'an ISO-3166 alpha-2 country code')
   regions: string[];
 }
 

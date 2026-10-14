@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Res } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -12,6 +12,7 @@ import { ApiErrors } from '../common/api-docs';
 import { type AuthUser, CurrentUser } from '../common/request-context';
 import { DeviceDto, RegisterDeviceDto } from './device.dto';
 import { DevicesService } from './devices.service';
+import { UUID_PARAM } from '../common/validation';
 
 @ApiTags('devices')
 @ApiBearerAuth('bearer')
@@ -50,7 +51,7 @@ export class DevicesController {
   @ApiOperation({ summary: 'Revoke a device and end its playback sessions' })
   @ApiNoContentResponse({ description: 'Device revoked.' })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
-  async revoke(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+  async revoke(@CurrentUser() user: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<void> {
     await this.devices.revokeOwn(user.id, id);
   }
 }

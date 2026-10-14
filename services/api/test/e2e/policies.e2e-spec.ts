@@ -85,6 +85,15 @@ describe('devices, regions, subscription states and errors (e2e)', () => {
 
     beforeAll(async () => {
       const admin = await loginAdmin(ctx.app);
+      const invalid = await http(ctx.app)
+        .post('/v1/admin/content')
+        .set(bearer(admin.accessToken))
+        .send({ kind: 'video', title: '', description: 'x', accessTier: 'free', defaultLanguage: 'en', regions: ['US', 'usa'] })
+        .expect(400);
+      expect(invalid.body.errors).toEqual([
+        { field: 'title', message: 'title should not be empty' },
+        { field: 'regions.1', message: 'regions.1 must be an ISO-3166 alpha-2 country code' },
+      ]);
       const created = await http(ctx.app)
         .post('/v1/admin/content')
         .set(bearer(admin.accessToken))
@@ -327,17 +336,25 @@ describe('devices, regions, subscription states and errors (e2e)', () => {
 
     it('uses the error shape for validation, malformed JSON, unknown routes and missing auth', async () => {
       const short = await http(ctx.app).post('/v1/auth/register').send({ email: 'a@e2e.test', password: 'short' }).expect(400);
-      expect(short.body).toEqual({ statusCode: 400, code: 'VALIDATION_FAILED', message: expect.stringContaining('password') });
+      expect(short.body).toEqual({
+        statusCode: 400,
+        code: 'VALIDATION_FAILED',
+        message: expect.stringContaining('password'),
+        errors: [{ field: 'password', message: expect.stringContaining('password') }],
+      });
+
+      const badId = await http(ctx.app).get('/v1/content/not-a-uuid').expect(400);
+      expect(badId.body.errors).toEqual([{ field: 'id', message: 'id must be a UUID' }]);
 
       const malformed = await http(ctx.app)
         .post('/v1/auth/login')
         .set('Content-Type', 'application/json')
         .send('{"email":')
         .expect(400);
-      expect(malformed.body).toEqual({ statusCode: 400, code: 'VALIDATION_FAILED', message: expect.any(String) });
+      expect(malformed.body).toEqual({ statusCode: 400, code: 'VALIDATION_FAILED', message: expect.any(String), errors: [] });
 
       const unknownQuery = await http(ctx.app).get('/v1/catalog?sort=title').expect(400);
-      expect(unknownQuery.body.code).toBe('VALIDATION_FAILED');
+      expect(unknownQuery.body).toMatchObject({ code: 'VALIDATION_FAILED', errors: [{ field: 'sort' }] });
 
       const missing = await http(ctx.app).get('/v1/nope').expect(404);
       expect(missing.body).toEqual({ statusCode: 404, code: 'NOT_FOUND', message: expect.any(String) });

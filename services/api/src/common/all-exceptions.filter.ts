@@ -64,7 +64,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       // Router 404s echo the URL; keep the response generic.
       return { statusCode: 404, code, message: 'Not found.' };
     }
-    return { statusCode: status, code, message: extractMessage(response, exception.message) };
+    const message = extractMessage(response, exception.message);
+    return code === 'VALIDATION_FAILED' ? { statusCode: status, code, message, errors: [] } : { statusCode: status, code, message };
   }
 
   /** Malformed JSON and oversize bodies are reported by body-parser before routing. */
@@ -73,10 +74,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const candidate = exception as { type?: unknown; status?: unknown };
     if (typeof candidate.type !== 'string' || typeof candidate.status !== 'number') return null;
     if (candidate.type === 'entity.too.large') {
-      return { statusCode: HttpStatus.PAYLOAD_TOO_LARGE, code: 'VALIDATION_FAILED', message: 'Request body is too large.' };
+      return {
+        statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
+        code: 'VALIDATION_FAILED',
+        message: 'Request body is too large.',
+        errors: [],
+      };
     }
     if (candidate.status >= 400 && candidate.status < 500) {
-      return { statusCode: 400, code: 'VALIDATION_FAILED', message: 'Request body could not be parsed.' };
+      return { statusCode: 400, code: 'VALIDATION_FAILED', message: 'Request body could not be parsed.', errors: [] };
     }
     return null;
   }

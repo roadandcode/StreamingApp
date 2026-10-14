@@ -255,19 +255,19 @@ export class AdminContentService {
     item: { id: string | null; kind: ContentKind; parentId: string | null },
   ): Promise<void> {
     if (item.kind === 'course') {
-      if (item.parentId) throw new AppException('VALIDATION_FAILED', 'A course cannot have a parent.');
+      if (item.parentId) throw AppException.invalidField('parentId', 'A course cannot have a parent.');
       return;
     }
     if (!item.parentId) {
-      if (item.kind === 'lesson') throw new AppException('VALIDATION_FAILED', 'A lesson needs a parent course (parentId).');
+      if (item.kind === 'lesson') throw AppException.invalidField('parentId', 'A lesson needs a parent course (parentId).');
       return;
     }
     if (item.parentId === item.id) {
-      throw new AppException('VALIDATION_FAILED', 'Content cannot be its own parent.');
+      throw AppException.invalidField('parentId', 'Content cannot be its own parent.');
     }
     const [parent] = await tx.select({ kind: content.kind }).from(content).where(eq(content.id, item.parentId)).limit(1);
     if (!parent || parent.kind !== 'course') {
-      throw new AppException('VALIDATION_FAILED', 'parentId must reference an existing course.');
+      throw AppException.invalidField('parentId', 'parentId must reference an existing course.');
     }
   }
 

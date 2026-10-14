@@ -1,5 +1,13 @@
-import { ApiProperty, ApiResponse, DECORATORS } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, ApiResponse, DECORATORS } from '@nestjs/swagger';
 import { ERROR_CODES, type ErrorCode, ERROR_STATUS } from './errors';
+
+export class FieldErrorDto {
+  @ApiProperty({ example: 'regions.0', description: 'Path of the invalid request field' })
+  field: string;
+
+  @ApiProperty({ example: 'regions.0 must be an ISO-3166 alpha-2 country code' })
+  message: string;
+}
 
 /** The error body every non-2xx response uses. */
 export class ErrorResponseDto {
@@ -11,6 +19,13 @@ export class ErrorResponseDto {
 
   @ApiProperty({ example: 'An active subscription is required to watch this content.' })
   message: string;
+
+  @ApiPropertyOptional({
+    type: FieldErrorDto,
+    isArray: true,
+    description: 'Present on 400 VALIDATION_FAILED: one entry per invalid field.',
+  })
+  errors?: FieldErrorDto[];
 }
 
 const ERROR_CODES_KEY = Symbol('api-error-codes');

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -17,6 +17,7 @@ import {
   PlaybackAuthorizationDto,
 } from './playback.dto';
 import { PlaybackService } from './playback.service';
+import { UUID_PARAM } from '../common/validation';
 
 @ApiTags('playback')
 @ApiBearerAuth('bearer')
@@ -74,7 +75,7 @@ export class PlaybackController {
   )
   heartbeat(
     @CurrentUser() user: AuthUser,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', UUID_PARAM) id: string,
     @Body() dto: HeartbeatDto,
     @ViewerCountry() country: string,
   ): Promise<HeartbeatResponseDto> {
@@ -86,7 +87,7 @@ export class PlaybackController {
   @ApiOperation({ summary: 'End a playback session' })
   @ApiNoContentResponse({ description: 'Session ended.' })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
-  async end(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+  async end(@CurrentUser() user: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<void> {
     await this.playback.end(user.id, id);
   }
 }

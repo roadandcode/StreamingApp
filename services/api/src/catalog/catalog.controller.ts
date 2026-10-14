@@ -1,9 +1,10 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiErrors } from '../common/api-docs';
 import { Public, ViewerCountry } from '../common/request-context';
 import { CatalogQueryDto, ContentDetailDto, PaginatedContentSummaryDto } from './catalog.dto';
 import { CatalogService } from './catalog.service';
+import { UUID_PARAM } from '../common/validation';
 
 @ApiTags('catalog')
 @Public()
@@ -26,7 +27,7 @@ export class CatalogController {
   @ApiOperation({ summary: 'Content detail with its published lessons and subtitles' })
   @ApiOkResponse({ type: ContentDetailDto })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
-  detail(@Param('id', ParseUUIDPipe) id: string, @ViewerCountry() country: string): Promise<ContentDetailDto> {
+  detail(@Param('id', UUID_PARAM) id: string, @ViewerCountry() country: string): Promise<ContentDetailDto> {
     return this.catalog.detail(id, country);
   }
 }

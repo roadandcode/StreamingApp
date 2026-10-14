@@ -57,21 +57,40 @@ const DEFAULT_MESSAGES: Partial<Record<ErrorCode, string>> = {
   SERVICE_UNAVAILABLE: 'The service is temporarily unavailable.',
 };
 
+/** One invalid request field; `field` is its path, e.g. `title` or `regions.0` (empty: the whole request). */
+export interface FieldError {
+  field: string;
+  message: string;
+}
+
 export interface ErrorBody {
   statusCode: number;
   code: ErrorCode;
   message: string;
+  /** Present on `400 VALIDATION_FAILED`. */
+  errors?: FieldError[];
 }
 
-/** An error with a contract error code; the global filter renders it as `{statusCode, code, message}`. */
+/**
+ * An error with a contract error code; the global filter renders it as `{statusCode, code, message}`
+ * (plus `errors` for VALIDATION_FAILED).
+ */
 export class AppException extends HttpException {
   readonly code: ErrorCode;
 
-  constructor(code: ErrorCode, message?: string) {
+  constructor(code: ErrorCode, message?: string, errors?: FieldError[]) {
     const status = ERROR_STATUS[code];
     const body: ErrorBody = { statusCode: status, code, message: message ?? DEFAULT_MESSAGES[code] ?? code };
+    if (code === 'VALIDATION_FAILED') {
+      body.errors = errors ?? [];
+    }
     super(body, status);
     this.code = code;
+  }
+
+  /** A VALIDATION_FAILED error about one field. */
+  static invalidField(field: string, message: string): AppException {
+    return new AppException('VALIDATION_FAILED', message, [{ field, message }]);
   }
 
   get body(): ErrorBody {

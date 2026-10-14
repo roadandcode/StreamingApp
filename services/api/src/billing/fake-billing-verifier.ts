@@ -134,8 +134,11 @@ export class FakeBillingVerifier implements BillingVerifier {
     }
     const parsed = fakeEventSchema.safeParse(json);
     if (!parsed.success) {
-      const message = parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
-      return Promise.reject(new AppException('VALIDATION_FAILED', message));
+      const errors = parsed.error.issues.map((i) => ({
+        field: i.path.map(String).join('.'),
+        message: `${i.path.map(String).join('.') || 'body'}: ${i.message}`,
+      }));
+      return Promise.reject(new AppException('VALIDATION_FAILED', errors.map((e) => e.message).join('; '), errors));
     }
     return Promise.resolve(mapFakeEvent(parsed.data));
   }

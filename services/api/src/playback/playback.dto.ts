@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayMaxSize, ArrayUnique, IsArray, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { DRM_SYSTEMS, type DrmSystem } from '../common/enums';
+import { EachElement } from '../common/validation';
 
 export class CreatePlaybackSessionDto {
   @ApiProperty({ format: 'uuid' })
@@ -21,7 +22,7 @@ export class CreatePlaybackSessionDto {
   @IsArray()
   @ArrayMaxSize(DRM_SYSTEMS.length)
   @ArrayUnique()
-  @IsIn(DRM_SYSTEMS, { each: true })
+  @EachElement('isDrmSystem', (v) => (DRM_SYSTEMS as readonly unknown[]).includes(v), `one of ${DRM_SYSTEMS.join(', ')}`)
   supportedDrm?: DrmSystem[];
 }
 

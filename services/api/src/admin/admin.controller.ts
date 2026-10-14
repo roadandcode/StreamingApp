@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -21,6 +21,7 @@ import {
 import { AdminContentService } from './admin-content.service';
 import { AdminUserDetailDto, AdminUsersQueryDto, PaginatedAdminUsersDto } from './admin-users.dto';
 import { AdminUsersService } from './admin-users.service';
+import { UUID_PARAM } from '../common/validation';
 
 @ApiTags('admin: content')
 @ApiBearerAuth('bearer')
@@ -50,7 +51,7 @@ export class AdminContentController {
   @ApiOperation({ summary: 'Content with all of its children' })
   @ApiOkResponse({ type: AdminContentDetailDto })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
-  get(@Param('id', ParseUUIDPipe) id: string): Promise<AdminContentDetailDto> {
+  get(@Param('id', UUID_PARAM) id: string): Promise<AdminContentDetailDto> {
     return this.contentService.get(id);
   }
 
@@ -60,7 +61,7 @@ export class AdminContentController {
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
   update(
     @CurrentUser() actor: AuthUser,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', UUID_PARAM) id: string,
     @Body() dto: UpdateContentDto,
   ): Promise<AdminContentDto> {
     return this.contentService.update(actor.id, id, dto);
@@ -70,7 +71,7 @@ export class AdminContentController {
   @ApiOperation({ summary: 'Create a video asset and a short-lived upload URL (PUT the file to it)' })
   @ApiCreatedResponse({ type: UploadSessionDto })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND', 'PROVIDER_NOT_CONFIGURED')
-  uploadSession(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<UploadSessionDto> {
+  uploadSession(@CurrentUser() actor: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<UploadSessionDto> {
     return this.contentService.createUploadSession(actor.id, id);
   }
 
@@ -79,7 +80,7 @@ export class AdminContentController {
   @ApiOperation({ summary: 'Publish; lessons and videos need a ready video asset' })
   @ApiOkResponse({ type: AdminContentDto })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND', 'ASSET_NOT_READY', 'PROVIDER_NOT_CONFIGURED')
-  publish(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<AdminContentDto> {
+  publish(@CurrentUser() actor: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<AdminContentDto> {
     return this.contentService.publish(actor.id, id);
   }
 
@@ -88,7 +89,7 @@ export class AdminContentController {
   @ApiOperation({ summary: 'Unpublish; open playback sessions end at their next heartbeat' })
   @ApiOkResponse({ type: AdminContentDto })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
-  unpublish(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<AdminContentDto> {
+  unpublish(@CurrentUser() actor: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<AdminContentDto> {
     return this.contentService.unpublish(actor.id, id);
   }
 }
@@ -113,7 +114,7 @@ export class AdminUsersController {
   @ApiOperation({ summary: 'User support view: subscription, devices and active playback' })
   @ApiOkResponse({ type: AdminUserDetailDto })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
-  detail(@Param('id', ParseUUIDPipe) id: string): Promise<AdminUserDetailDto> {
+  detail(@Param('id', UUID_PARAM) id: string): Promise<AdminUserDetailDto> {
     return this.usersService.detail(id);
   }
 
@@ -122,7 +123,7 @@ export class AdminUsersController {
   @ApiOperation({ summary: 'Revoke all login sessions of a user' })
   @ApiNoContentResponse({ description: 'Sessions revoked.' })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
-  async revokeSessions(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+  async revokeSessions(@CurrentUser() actor: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<void> {
     await this.usersService.revokeLoginSessions(actor.id, id);
   }
 
@@ -131,7 +132,7 @@ export class AdminUsersController {
   @ApiOperation({ summary: 'Revoke a device and end its playback sessions' })
   @ApiNoContentResponse({ description: 'Device revoked.' })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
-  async revokeDevice(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+  async revokeDevice(@CurrentUser() actor: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<void> {
     await this.usersService.revokeDevice(actor.id, id);
   }
 
@@ -140,7 +141,7 @@ export class AdminUsersController {
   @ApiOperation({ summary: 'Revoke a playback session' })
   @ApiNoContentResponse({ description: 'Playback session revoked.' })
   @ApiErrors('VALIDATION_FAILED', 'NOT_FOUND')
-  async revokePlaybackSession(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+  async revokePlaybackSession(@CurrentUser() actor: AuthUser, @Param('id', UUID_PARAM) id: string): Promise<void> {
     await this.usersService.revokePlaybackSession(actor.id, id);
   }
 }

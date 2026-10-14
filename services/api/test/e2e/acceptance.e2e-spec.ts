@@ -63,7 +63,12 @@ describe('acceptance path (e2e)', () => {
       .post('/v1/auth/register')
       .send({ email: 'sneaky@e2e.test', password: 'long-enough-pass', role: 'admin' })
       .expect(400);
-    expect(escalation.body).toEqual({ statusCode: 400, code: 'VALIDATION_FAILED', message: expect.any(String) });
+    expect(escalation.body).toEqual({
+      statusCode: 400,
+      code: 'VALIDATION_FAILED',
+      message: expect.any(String),
+      errors: [{ field: 'role', message: 'property role should not exist' }],
+    });
 
     viewer = await registerUser(ctx.app);
     const me = await http(ctx.app).get('/v1/me').set(bearer(viewer.accessToken)).expect(200);
@@ -111,7 +116,10 @@ describe('acceptance path (e2e)', () => {
       .set(bearer(viewer.accessToken))
       .send({ contentId: SEED_IDS.freeLesson1, deviceId, supportedDrm: ['clearkey'] })
       .expect(400);
-    expect(unknownDrm.body.code).toBe('VALIDATION_FAILED');
+    expect(unknownDrm.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      errors: [{ field: 'supportedDrm.0', message: expect.stringContaining('supportedDrm.0 must be one of') }],
+    });
 
     const response = await http(ctx.app)
       .post('/v1/playback/sessions')
