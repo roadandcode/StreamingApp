@@ -12,5 +12,8 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // TODO(drm): register the "com.roadandcode.streamingapp/drm_player" channel
+    // here, backed by AVPlayer + AVContentKeySession for FairPlay
+    // (see lib/features/player/native_drm_player.dart).
   }
 }
