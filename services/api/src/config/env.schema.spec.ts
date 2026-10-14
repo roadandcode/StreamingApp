@@ -25,6 +25,7 @@ describe('parseEnv', () => {
       BILLING_MODE: 'fake',
     });
     expect(env.TRUSTED_COUNTRY_HEADER).toBeUndefined();
+    expect(env.RAZORPAY_KEY_ID).toBeUndefined();
   });
 
   it('requires a JWT secret of at least 32 characters', () => {

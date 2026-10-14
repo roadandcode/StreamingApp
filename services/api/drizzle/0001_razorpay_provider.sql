@@ -1,0 +1,1 @@
+ALTER TYPE "public"."billing_provider" ADD VALUE 'razorpay' BEFORE 'fake';

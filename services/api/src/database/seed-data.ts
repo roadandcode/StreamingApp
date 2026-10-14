@@ -146,6 +146,8 @@ const SEED_CONTENT: SeedContent[] = [
 export interface SeedOptions {
   adminEmail?: string;
   adminPassword?: string;
+  /** Razorpay plan_ids for web checkout; a store product is created only for the ones given. */
+  razorpayPlanIds?: { monthly?: string; yearly?: string };
   /** Country the sample content is published in. */
   region?: string;
 }
@@ -181,9 +183,17 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
     }
   }
 
+  const razorpayProducts: Record<string, string | undefined> = {
+    premium_monthly: options.razorpayPlanIds?.monthly,
+    premium_yearly: options.razorpayPlanIds?.yearly,
+  };
   let productCount = 0;
   await db.transaction(async (tx) => {
-    for (const plan of SEED_PLANS) {
+    for (const seedPlan of SEED_PLANS) {
+      const razorpayPlanId = razorpayProducts[seedPlan.code];
+      const plan = razorpayPlanId
+        ? { ...seedPlan, products: [...seedPlan.products, { provider: 'razorpay' as const, productId: razorpayPlanId }] }
+        : seedPlan;
       const [row] = await tx
         .insert(plans)
         .values({ code: plan.code, name: plan.name, billingPeriod: plan.billingPeriod, accessTier: plan.accessTier })

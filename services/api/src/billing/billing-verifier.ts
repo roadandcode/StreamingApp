@@ -22,15 +22,27 @@ export interface VerifiedSubscriptionState {
   taxAmountMinor: number | null;
 }
 
-/** A verified store notification, normalized. Optional fields that are absent keep stored values. */
-export interface ParsedNotification {
+/** A charge reported by the provider, recorded in billing_transactions. */
+export interface ProviderCharge {
+  transactionId: string;
+  currency: string | null;
+  grossAmountMinor: number | null;
+  taxAmountMinor: number | null;
+}
+
+interface NotificationBase {
   eventId: string;
-  /** When the store produced the event; older events than the stored state are skipped. */
+  /** When the store produced the event; events older than the stored state are skipped. */
   occurredAt: Date | null;
+}
+
+/** A change to one subscription. Optional fields that are absent keep the stored values. */
+export interface SubscriptionNotification extends NotificationBase {
+  kind: 'subscription';
   originalTransactionId: string;
-  /** A new billing transaction carried by the event (renewals), if any. */
-  transactionId: string | null;
   status: StoredSubscriptionStatus;
+  /** A new billing transaction carried by the event (renewals), if any. */
+  charge: ProviderCharge | null;
   currentPeriodEnd?: Date;
   /** For renewals without an explicit period end: extend by one billing period. */
   extendOnePeriod?: boolean;
@@ -39,6 +51,20 @@ export interface ParsedNotification {
   /** Marks the latest billing transaction as refunded. */
   refunded?: boolean;
 }
+
+/** A refund of one charge; the subscription becomes `refunded` when it was the latest charge. */
+export interface RefundNotification extends NotificationBase {
+  kind: 'refund';
+  refundedTransactionId: string;
+}
+
+/** A verified event this backend does not act on (still recorded once). */
+export interface IgnoredNotification extends NotificationBase {
+  kind: 'ignored';
+  reason: string;
+}
+
+export type ParsedNotification = SubscriptionNotification | RefundNotification | IgnoredNotification;
 
 export interface BillingVerifier {
   readonly provider: BillingProvider;

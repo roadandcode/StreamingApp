@@ -57,6 +57,9 @@ export const envSchema = z
     FAKE_SAMPLE_MANIFEST_URL: url(DEFAULT_SAMPLE_MANIFEST_URL),
     BILLING_MODE: z.enum(['fake', 'live']).default('fake'),
     FAKE_WEBHOOK_SECRET: z.string().min(16, 'must be at least 16 characters').optional(),
+    RAZORPAY_KEY_ID: z.string().trim().min(1).optional(),
+    RAZORPAY_KEY_SECRET: z.string().min(1).optional(),
+    RAZORPAY_WEBHOOK_SECRET: z.string().min(1).optional(),
     THROTTLE_AUTH_LIMIT: int(10, 1, 1_000_000),
     THROTTLE_AUTH_TTL_SECONDS: int(60, 1, 86_400),
     THROTTLE_PLAYBACK_LIMIT: int(60, 1, 1_000_000),
@@ -129,4 +132,11 @@ export function isFakeMediaEnabled(env: Pick<Env, 'MEDIA_PROVIDER' | 'NODE_ENV'>
 
 export function isFakeBillingEnabled(env: Pick<Env, 'BILLING_MODE' | 'NODE_ENV'>): boolean {
   return env.BILLING_MODE === 'fake' && env.NODE_ENV !== 'production';
+}
+
+/** Razorpay web checkout needs all three credentials; otherwise its endpoints fail closed (503). */
+export function isRazorpayConfigured(
+  env: Pick<Env, 'RAZORPAY_KEY_ID' | 'RAZORPAY_KEY_SECRET' | 'RAZORPAY_WEBHOOK_SECRET'>,
+): boolean {
+  return Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET && env.RAZORPAY_WEBHOOK_SECRET);
 }

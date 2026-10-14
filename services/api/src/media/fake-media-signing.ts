@@ -1,4 +1,5 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac } from 'node:crypto';
+import { signaturesMatch } from '../common/signatures';
 
 /**
  * URL signing for the fake media provider (development and tests only).
@@ -28,14 +29,6 @@ function manifestCanonical(providerAssetId: string, sessionId: string, exp: numb
 
 export function hmacHex(secret: string, message: string): string {
   return createHmac('sha256', secret).update(message, 'utf8').digest('hex');
-}
-
-/** Constant-time comparison of two hex signatures; false for anything malformed. */
-export function signaturesMatch(expectedHex: string, presented: unknown): boolean {
-  if (typeof presented !== 'string' || !/^[0-9a-f]{64}$/i.test(presented)) return false;
-  const a = Buffer.from(expectedHex, 'hex');
-  const b = Buffer.from(presented.toLowerCase(), 'hex');
-  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 function parseExp(raw: unknown): number | null {

@@ -1,16 +1,42 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { AppException } from '../common/errors';
 import { type Database, DRIZZLE, type Executor } from '../database/database.types';
-import { type BillingProvider, billingTransactions, plans, subscriptions } from '../database/schema';
+import {
+  type BillingPeriod,
+  type BillingProvider,
+  billingTransactions,
+  plans,
+  type StoredSubscriptionStatus,
+  type SubscriptionRow,
+  subscriptions,
+} from '../database/schema';
 import { EntitlementsService } from '../entitlements/entitlements.service';
 import { revokePlaybackSessions } from '../playback/session-revocation';
 import type { ApplyOutcome } from '../webhooks/provider-event-dedupe';
 import type { SubscriptionViewDto, VerifyPurchaseDto } from './billing.dto';
 import { addBillingPeriod } from './billing-period';
-import { BILLING_VERIFIER_LIST, type BillingVerifier, type ParsedNotification } from './billing-verifier';
+import {
+  BILLING_VERIFIER_LIST,
+  type BillingVerifier,
+  type ParsedNotification,
+  type ProviderCharge,
+  type RefundNotification,
+  type SubscriptionNotification,
+} from './billing-verifier';
 import { PlansService } from './plans.service';
 import { buildSubscriptionView, NO_SUBSCRIPTION_VIEW, type SubscriptionViewInput } from './subscription-view';
+
+/** Fields of a provider state change; `undefined` keeps the stored value. */
+export interface SubscriptionStateUpdate {
+  status: StoredSubscriptionStatus;
+  currentPeriodEnd?: Date | null;
+  autoRenew?: boolean;
+  cancelAtPeriodEnd?: boolean;
+  planId?: string;
+  /** Stored as last_verified_at: when this state was read from (or reported by) the provider. */
+  verifiedAt: Date;
+}
 
 /** Revocation reason stored on playback sessions when the user loses premium access. */
 export const ENTITLEMENT_LOST_REASON = 'ENTITLEMENT_REQUIRED';
@@ -144,13 +170,67 @@ export class BillingService {
     event: ParsedNotification,
     now: Date,
   ): Promise<ApplyOutcome> {
-    const [current] = await tx
+    switch (event.kind) {
+      case 'ignored':
+        return { status: 'skipped', note: event.reason };
+      case 'refund':
+        return this.applyRefund(tx, provider, event, now);
+      case 'subscription':
+        return this.applySubscriptionEvent(tx, provider, event, now);
+    }
+  }
+
+  /** Locks and returns a subscription by provider id, with its plan's billing period. */
+  async lockSubscription(
+    tx: Executor,
+    provider: BillingProvider,
+    providerSubscriptionId: string,
+  ): Promise<{ subscription: SubscriptionRow; billingPeriod: BillingPeriod } | null> {
+    const [row] = await tx
       .select({ subscription: subscriptions, billingPeriod: plans.billingPeriod })
       .from(subscriptions)
       .innerJoin(plans, eq(plans.id, subscriptions.planId))
-      .where(and(eq(subscriptions.provider, provider), eq(subscriptions.providerSubscriptionId, event.originalTransactionId)))
+      .where(and(eq(subscriptions.provider, provider), eq(subscriptions.providerSubscriptionId, providerSubscriptionId)))
       .for('update', { of: subscriptions })
       .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * Writes provider state onto a locked subscription, records the charge (if any) and recomputes the
+   * user's entitlement, all in the caller's transaction.
+   */
+  async applyState(
+    tx: Executor,
+    sub: SubscriptionRow,
+    update: SubscriptionStateUpdate,
+    charge: ProviderCharge | null,
+    now: Date,
+  ): Promise<void> {
+    await tx
+      .update(subscriptions)
+      .set({
+        status: update.status,
+        currentPeriodEnd: update.currentPeriodEnd === undefined ? sub.currentPeriodEnd : update.currentPeriodEnd,
+        autoRenew: update.autoRenew ?? sub.autoRenew,
+        cancelAtPeriodEnd: update.cancelAtPeriodEnd ?? sub.cancelAtPeriodEnd,
+        planId: update.planId ?? sub.planId,
+        lastVerifiedAt: update.verifiedAt,
+      })
+      .where(eq(subscriptions.id, sub.id));
+    if (charge) {
+      await this.recordCharge(tx, sub, charge);
+    }
+    await this.recomputeAccess(tx, sub.userId, now);
+  }
+
+  private async applySubscriptionEvent(
+    tx: Executor,
+    provider: BillingProvider,
+    event: SubscriptionNotification,
+    now: Date,
+  ): Promise<ApplyOutcome> {
+    const current = await this.lockSubscription(tx, provider, event.originalTransactionId);
     if (!current) {
       // The app has not verified this purchase yet; verification will fetch the current state.
       return { status: 'skipped', note: 'unknown subscription' };
@@ -159,47 +239,100 @@ export class BillingService {
     if (event.occurredAt && sub.lastVerifiedAt && event.occurredAt.getTime() < sub.lastVerifiedAt.getTime()) {
       return { status: 'skipped', note: 'older than the stored state' };
     }
-
-    let currentPeriodEnd = event.currentPeriodEnd ?? sub.currentPeriodEnd;
-    if (!event.currentPeriodEnd && event.extendOnePeriod) {
+    let currentPeriodEnd = event.currentPeriodEnd;
+    if (!currentPeriodEnd && event.extendOnePeriod) {
       const from = sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() > now.getTime() ? sub.currentPeriodEnd : now;
       currentPeriodEnd = addBillingPeriod(from, current.billingPeriod);
     }
-    await tx
-      .update(subscriptions)
-      .set({
+    await this.applyState(
+      tx,
+      sub,
+      {
         status: event.status,
         currentPeriodEnd,
-        autoRenew: event.autoRenew ?? sub.autoRenew,
-        cancelAtPeriodEnd: event.cancelAtPeriodEnd ?? sub.cancelAtPeriodEnd,
-        lastVerifiedAt: event.occurredAt ?? now,
-      })
-      .where(eq(subscriptions.id, sub.id));
-
-    if (event.transactionId) {
-      await tx
-        .insert(billingTransactions)
-        .values({
-          subscriptionId: sub.id,
-          provider,
-          providerTransactionId: event.transactionId,
-          originalTransactionId: event.originalTransactionId,
-        })
-        .onConflictDoNothing({ target: [billingTransactions.provider, billingTransactions.providerTransactionId] });
-    }
+        autoRenew: event.autoRenew,
+        cancelAtPeriodEnd: event.cancelAtPeriodEnd,
+        verifiedAt: event.occurredAt ?? now,
+      },
+      event.charge,
+      now,
+    );
     if (event.refunded) {
       const [latest] = await tx
         .select({ id: billingTransactions.id })
         .from(billingTransactions)
         .where(eq(billingTransactions.subscriptionId, sub.id))
-        .orderBy(desc(billingTransactions.createdAt))
+        .orderBy(desc(billingTransactions.createdAt), desc(billingTransactions.id))
         .limit(1);
       if (latest) {
         await tx.update(billingTransactions).set({ refundStatus: 'refunded' }).where(eq(billingTransactions.id, latest.id));
       }
     }
-    await this.recomputeAccess(tx, sub.userId, now);
     return { status: 'processed' };
+  }
+
+  /** Marks the charge refunded; the subscription becomes `refunded` only if it was the latest charge. */
+  private async applyRefund(
+    tx: Executor,
+    provider: BillingProvider,
+    event: RefundNotification,
+    now: Date,
+  ): Promise<ApplyOutcome> {
+    const [charge] = await tx
+      .select({ id: billingTransactions.id, subscriptionId: billingTransactions.subscriptionId })
+      .from(billingTransactions)
+      .where(
+        and(
+          eq(billingTransactions.provider, provider),
+          eq(billingTransactions.providerTransactionId, event.refundedTransactionId),
+        ),
+      )
+      .limit(1);
+    if (!charge) {
+      return { status: 'skipped', note: 'unknown charge' };
+    }
+    await tx.update(billingTransactions).set({ refundStatus: 'refunded' }).where(eq(billingTransactions.id, charge.id));
+    const [latest] = await tx
+      .select({ id: billingTransactions.id })
+      .from(billingTransactions)
+      .where(eq(billingTransactions.subscriptionId, charge.subscriptionId))
+      .orderBy(desc(billingTransactions.createdAt), desc(billingTransactions.id))
+      .limit(1);
+    if (latest?.id !== charge.id) {
+      return { status: 'processed', note: 'refund of an earlier charge' };
+    }
+    const [sub] = await tx
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.id, charge.subscriptionId))
+      .for('update')
+      .limit(1);
+    if (!sub) return { status: 'skipped', note: 'unknown subscription' };
+    await this.applyState(tx, sub, { status: 'refunded', autoRenew: false, verifiedAt: event.occurredAt ?? now }, null, now);
+    return { status: 'processed' };
+  }
+
+  /** Inserts a charge once; a later report of the same charge fills in missing amounts. */
+  private async recordCharge(tx: Executor, sub: SubscriptionRow, charge: ProviderCharge): Promise<void> {
+    await tx
+      .insert(billingTransactions)
+      .values({
+        subscriptionId: sub.id,
+        provider: sub.provider,
+        providerTransactionId: charge.transactionId,
+        originalTransactionId: sub.providerSubscriptionId,
+        currency: charge.currency,
+        grossAmountMinor: charge.grossAmountMinor,
+        taxAmountMinor: charge.taxAmountMinor,
+      })
+      .onConflictDoUpdate({
+        target: [billingTransactions.provider, billingTransactions.providerTransactionId],
+        set: {
+          currency: sql`coalesce(${billingTransactions.currency}, excluded.currency)`,
+          grossAmountMinor: sql`coalesce(${billingTransactions.grossAmountMinor}, excluded.gross_amount_minor)`,
+          taxAmountMinor: sql`coalesce(${billingTransactions.taxAmountMinor}, excluded.tax_amount_minor)`,
+        },
+      });
   }
 
   /** Recomputes the entitlement; when premium access is lost, open premium playback is revoked. */

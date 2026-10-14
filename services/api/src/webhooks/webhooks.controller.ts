@@ -48,6 +48,22 @@ export class StoreWebhooksController {
   google(@Req() request: RawBodyRequest<Request>): Promise<WebhookAckDto> {
     return this.webhooks.handle('google', request.rawBody, request.headers);
   }
+
+  @Post('razorpay')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Razorpay webhooks (web subscriptions)',
+    description:
+      'X-Razorpay-Signature is the hex HMAC-SHA256 of the raw body with RAZORPAY_WEBHOOK_SECRET; the event ' +
+      'id comes from X-Razorpay-Event-Id. Returns 503 when Razorpay is not configured.',
+  })
+  @ApiHeader({ name: 'X-Razorpay-Signature', required: true })
+  @ApiHeader({ name: 'X-Razorpay-Event-Id', required: true })
+  @ApiOkResponse({ type: WebhookAckDto })
+  @ApiErrors('VALIDATION_FAILED', 'INVALID_SIGNATURE', 'PROVIDER_NOT_CONFIGURED')
+  razorpay(@Req() request: RawBodyRequest<Request>): Promise<WebhookAckDto> {
+    return this.webhooks.handle('razorpay', request.rawBody, request.headers);
+  }
 }
 
 /** Mounted only when BILLING_MODE=fake outside production. */

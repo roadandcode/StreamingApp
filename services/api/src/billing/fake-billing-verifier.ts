@@ -4,9 +4,14 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { AppException } from '../common/errors';
 import { AppConfig } from '../config/app-config';
-import { signaturesMatch } from '../media/fake-media-signing';
+import { signaturesMatch } from '../common/signatures';
 import { addBillingPeriod } from './billing-period';
-import type { BillingVerifier, ParsedNotification, VerifiedSubscriptionState } from './billing-verifier';
+import type {
+  BillingVerifier,
+  ParsedNotification,
+  SubscriptionNotification,
+  VerifiedSubscriptionState,
+} from './billing-verifier';
 import { PlansService } from './plans.service';
 
 export const FAKE_SIGNATURE_HEADER = 'x-fake-signature';
@@ -36,20 +41,26 @@ export function signFakeWebhookBody(secret: string, rawBody: Buffer | string): s
 }
 
 /** Maps a fake store event onto normalized subscription changes. */
-export function mapFakeEvent(event: FakeEvent): ParsedNotification {
+export function mapFakeEvent(event: FakeEvent): SubscriptionNotification {
   const expiresAt = event.expiresAt ? new Date(event.expiresAt) : undefined;
   const base = {
+    kind: 'subscription' as const,
     eventId: event.eventId,
     occurredAt: null,
     originalTransactionId: event.originalTransactionId,
-    transactionId: null,
+    charge: null,
     currentPeriodEnd: expiresAt,
   };
   switch (event.type) {
     case 'RENEWED':
       return {
         ...base,
-        transactionId: `${event.originalTransactionId}:renewal:${event.eventId}`,
+        charge: {
+          transactionId: `${event.originalTransactionId}:renewal:${event.eventId}`,
+          currency: null,
+          grossAmountMinor: null,
+          taxAmountMinor: null,
+        },
         status: 'active',
         extendOnePeriod: !expiresAt,
         autoRenew: true,

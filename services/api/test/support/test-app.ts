@@ -24,7 +24,7 @@ export interface TestContext {
 }
 
 /** Migrates the test database, empties every table and loads the seed. */
-export async function resetDatabase(): Promise<void> {
+export async function resetDatabase(options: { razorpayPlanIds?: { monthly?: string; yearly?: string } } = {}): Promise<void> {
   const url = process.env.DATABASE_URL;
   if (!url || !/_test(\?|$)/.test(url)) {
     throw new Error('resetDatabase only runs against a *_test database');
@@ -40,6 +40,7 @@ export async function resetDatabase(): Promise<void> {
     await seedDatabase(db, {
       adminEmail: process.env.SEED_ADMIN_EMAIL,
       adminPassword: process.env.SEED_ADMIN_PASSWORD,
+      razorpayPlanIds: options.razorpayPlanIds,
     });
   } finally {
     await pool.end();
@@ -50,16 +51,23 @@ export async function resetDatabase(): Promise<void> {
  * Builds the app exactly like main.ts (same module, same global setup) with optional environment
  * overrides; the previous environment is restored on close.
  */
-export async function createTestApp(overrides: Record<string, string | undefined> = {}): Promise<TestContext> {
+export async function createTestApp(
+  overrides: Record<string, string | undefined> = {},
+  providers: Array<{ token: unknown; value: unknown }> = [],
+): Promise<TestContext> {
   const saved = { ...process.env };
   for (const [key, value] of Object.entries(overrides)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
   const env = parseEnv(process.env);
-  const moduleRef = await Test.createTestingModule({
+  let builder = Test.createTestingModule({
     imports: [AppModule.register(env, { requestLogging: false })],
-  }).compile();
+  });
+  for (const provider of providers) {
+    builder = builder.overrideProvider(provider.token).useValue(provider.value);
+  }
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<INestApplication<App>>({ rawBody: true, logger: ['error'] });
   configureApp(app, env, { swaggerUi: false });
   await app.init();

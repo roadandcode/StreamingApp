@@ -40,7 +40,7 @@ export const processingStatusEnum = pgEnum('processing_status', [
   'failed',
 ]);
 export const platformEnum = pgEnum('platform', ['android', 'ios', 'web']);
-export const billingProviderEnum = pgEnum('billing_provider', ['apple', 'google', 'fake']);
+export const billingProviderEnum = pgEnum('billing_provider', ['apple', 'google', 'razorpay', 'fake']);
 export const billingPeriodEnum = pgEnum('billing_period', ['P1M', 'P1Y']);
 export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'pending',
@@ -213,7 +213,7 @@ export const subscriptions = pgTable(
       .notNull()
       .references(() => plans.id, { onDelete: 'restrict' }),
     provider: billingProviderEnum('provider').notNull(),
-    /** Apple original transaction id or Google purchase token. */
+    /** Apple original transaction id, Google purchase token or Razorpay subscription id. */
     providerSubscriptionId: text('provider_subscription_id').notNull(),
     status: subscriptionStatusEnum('status').notNull(),
     currentPeriodEnd: ts('current_period_end'),

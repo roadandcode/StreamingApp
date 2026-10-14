@@ -20,6 +20,10 @@ async function main(): Promise<void> {
       adminEmail,
       adminPassword,
       region: process.env.DEFAULT_COUNTRY_CODE?.trim().toUpperCase() || 'IN',
+      razorpayPlanIds: {
+        monthly: process.env.RAZORPAY_PLAN_ID_MONTHLY?.trim() || undefined,
+        yearly: process.env.RAZORPAY_PLAN_ID_YEARLY?.trim() || undefined,
+      },
     });
     console.log(
       `Seeded ${redactDatabaseUrl(databaseUrl)}: admin ${summary.admin}, ${summary.plans} plans, ` +
